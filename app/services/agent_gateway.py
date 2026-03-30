@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.db.models import AgentCallLogORM
 from app.services.prompt_template_service import PromptTemplateResolution, prompt_template_service
 from app.services.provider_governance_service import ProviderPreflightResult, provider_governance_service
+from app.services.rulepack_service import rulepack_service
 
 
 class AgentGatewayError(RuntimeError):
@@ -745,12 +746,15 @@ class AgentGateway:
         provider = self._resolve_provider()
         resolved_project_id = str(audit_context.get("project_id") or context.get("project_id") or "") or None
         resolved_genre_id = str(audit_context.get("genre_id") or context.get("genre_id") or "") or None
-        enriched_context = rulepack_service.extend_agent_context(
-            db=db,
-            project_id=resolved_project_id,
-            genre_id=resolved_genre_id,
-            context=context,
-        )
+        try:
+            enriched_context = rulepack_service.extend_agent_context(
+                db=db,
+                project_id=resolved_project_id,
+                genre_id=resolved_genre_id,
+                context=context,
+            )
+        except Exception:
+            enriched_context = dict(context)
         prompt_resolution = prompt_template_service.resolve_template(
             db=db,
             project_id=resolved_project_id,
