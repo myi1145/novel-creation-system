@@ -22,6 +22,8 @@ TOrm = TypeVar("TOrm", CharacterCardORM, RuleCardORM, OpenLoopCardORM, Relations
 
 
 class ObjectService:
+    _VALID_STATE_SCOPES = {"canon", "working", "all"}
+
     def create_character(self, db: Session, request: CreateCharacterCardRequest) -> CharacterCard:
         self._ensure_project(db, request.project_id)
         self._ensure_working_object_create(request.bind_to_latest_canon)
@@ -48,8 +50,10 @@ class ObjectService:
         logical_object_id: str | None = None,
         current_only: bool = True,
         include_retired: bool = False,
+        state_scope: str = "canon",
     ) -> list[CharacterCard]:
         query = db.query(CharacterCardORM).filter(CharacterCardORM.project_id == project_id)
+        query = self._apply_state_scope(query=query, orm_class=CharacterCardORM, state_scope=state_scope)
         if snapshot_id:
             query = query.filter(CharacterCardORM.snapshot_id == snapshot_id)
         if logical_object_id:
@@ -86,8 +90,10 @@ class ObjectService:
         logical_object_id: str | None = None,
         current_only: bool = True,
         include_retired: bool = False,
+        state_scope: str = "canon",
     ) -> list[RuleCard]:
         query = db.query(RuleCardORM).filter(RuleCardORM.project_id == project_id)
+        query = self._apply_state_scope(query=query, orm_class=RuleCardORM, state_scope=state_scope)
         if snapshot_id:
             query = query.filter(RuleCardORM.snapshot_id == snapshot_id)
         if logical_object_id:
@@ -123,8 +129,10 @@ class ObjectService:
         logical_object_id: str | None = None,
         current_only: bool = True,
         include_retired: bool = False,
+        state_scope: str = "canon",
     ) -> list[OpenLoopCard]:
         query = db.query(OpenLoopCardORM).filter(OpenLoopCardORM.project_id == project_id)
+        query = self._apply_state_scope(query=query, orm_class=OpenLoopCardORM, state_scope=state_scope)
         if snapshot_id:
             query = query.filter(OpenLoopCardORM.snapshot_id == snapshot_id)
         if logical_object_id:
@@ -165,8 +173,10 @@ class ObjectService:
         logical_object_id: str | None = None,
         current_only: bool = True,
         include_retired: bool = False,
+        state_scope: str = "canon",
     ) -> list[RelationshipEdge]:
         query = db.query(RelationshipEdgeORM).filter(RelationshipEdgeORM.project_id == project_id)
+        query = self._apply_state_scope(query=query, orm_class=RelationshipEdgeORM, state_scope=state_scope)
         if snapshot_id:
             query = query.filter(RelationshipEdgeORM.snapshot_id == snapshot_id)
         if logical_object_id:
@@ -255,6 +265,17 @@ class ObjectService:
     def _ensure_working_object_create(self, bind_to_latest_canon: bool) -> None:
         if bind_to_latest_canon:
             raise ConflictError("对象创建不能直接写入 Canon。请先创建工作对象，或通过 ChangeSet 提议 Canon 变更。")
+
+    def _apply_state_scope(self, query: Any, orm_class: type[TOrm], state_scope: str) -> Any:
+        normalized_scope = state_scope.strip().lower()
+        if normalized_scope not in self._VALID_STATE_SCOPES:
+            allowed = ", ".join(sorted(self._VALID_STATE_SCOPES))
+            raise ConflictError(f"state_scope 不合法: {state_scope}。仅支持: {allowed}")
+        if normalized_scope == "canon":
+            return query.filter(orm_class.is_canon_bound.is_(True))
+        if normalized_scope == "working":
+            return query.filter(orm_class.is_canon_bound.is_(False))
+        return query
 
     def _get_latest_snapshot(self, db: Session, project_id: str) -> CanonSnapshotORM:
         snapshot = (
