@@ -17,5 +17,5 @@ def run_gate_reviews(request: RunGateReviewRequest, db: Session = Depends(get_db
             "gate_names": [gate.value for gate in request.gate_names],
             "results": [item.model_dump(mode="json") for item in results],
         },
-        message="gate reviews completed",
+        message="闸门审查已完成",
     )

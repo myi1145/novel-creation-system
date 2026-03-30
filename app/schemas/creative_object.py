@@ -8,7 +8,7 @@ from app.schemas.common import IdentifiedModel
 
 
 class StructuredCreativeObject(IdentifiedModel):
-    """最小 Schema-first 协议壳层。
+    """最小结构优先协议壳层。
 
     不引入新表，不强行重构 ORM；仅把主链对象统一到可追踪的协议字段上，
     方便后续 workflow/gate/prompt/object schema 继续收口。

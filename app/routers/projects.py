@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post("")
 def create_project(request: CreateProjectRequest, db: Session = Depends(get_db)) -> dict:
     project = project_service.create_project(db=db, request=request)
-    return success_response(data=project.model_dump(mode="json"), message="project created")
+    return success_response(data=project.model_dump(mode="json"), message="项目已创建")
 
 
 @router.get("")

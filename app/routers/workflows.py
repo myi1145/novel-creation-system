@@ -28,7 +28,7 @@ def get_chapter_cycle_status(db: Session = Depends(get_db)) -> dict:
 @router.post("/chapter-cycle/execute")
 def execute_chapter_cycle(request: ExecuteChapterCycleRequest, db: Session = Depends(get_db)) -> dict:
     data = workflow_service.execute_chapter_cycle(db=db, request=request)
-    return success_response(data=data, message="chapter cycle executed")
+    return success_response(data=data, message="单章主链执行完成")
 
 
 
@@ -36,7 +36,7 @@ def execute_chapter_cycle(request: ExecuteChapterCycleRequest, db: Session = Dep
 @router.post("/chapter-sequence/execute")
 def execute_chapter_sequence(request: ExecuteChapterSequenceRequest, db: Session = Depends(get_db)) -> dict:
     data = workflow_service.execute_chapter_sequence(db=db, request=request)
-    return success_response(data=data, message="chapter sequence executed")
+    return success_response(data=data, message="连续章节执行完成")
 
 @router.get("/chapter-sequence/reports/{workflow_run_id}")
 def get_chapter_sequence_report(workflow_run_id: str, db: Session = Depends(get_db)) -> dict:
@@ -91,27 +91,27 @@ def get_workflow_run_detail(workflow_run_id: str, db: Session = Depends(get_db))
 
 @router.post("/runs/pause")
 def pause_workflow_run(request: PauseWorkflowRunRequest, db: Session = Depends(get_db)) -> dict:
-    return success_response(data=workflow_service.pause_workflow_run(db=db, request=request), message="workflow paused")
+    return success_response(data=workflow_service.pause_workflow_run(db=db, request=request), message="工作流已暂停")
 
 
 @router.post("/runs/resume")
 def resume_workflow_run(request: ResumeWorkflowRunRequest, db: Session = Depends(get_db)) -> dict:
-    return success_response(data=workflow_service.resume_workflow_run(db=db, request=request), message="workflow resumed")
+    return success_response(data=workflow_service.resume_workflow_run(db=db, request=request), message="工作流已恢复")
 
 
 @router.post("/runs/manual-takeover")
 def request_manual_takeover(request: ManualTakeoverRequest, db: Session = Depends(get_db)) -> dict:
-    return success_response(data=workflow_service.request_manual_takeover(db=db, request=request), message="workflow moved to manual review")
+    return success_response(data=workflow_service.request_manual_takeover(db=db, request=request), message="工作流已切换到人工审阅")
 
 
 @router.post("/runs/mark-human-reviewed")
 def mark_human_reviewed(request: MarkHumanReviewedRequest, db: Session = Depends(get_db)) -> dict:
-    return success_response(data=workflow_service.mark_human_reviewed(db=db, request=request), message="human review recorded")
+    return success_response(data=workflow_service.mark_human_reviewed(db=db, request=request), message="人工审阅结果已记录")
 
 
 @router.post("/runs/manual-continue")
 def manual_continue_workflow_run(request: ManualContinueWorkflowRunRequest, db: Session = Depends(get_db)) -> dict:
-    return success_response(data=workflow_service.manual_continue_workflow_run(db=db, request=request), message="workflow manually continued")
+    return success_response(data=workflow_service.manual_continue_workflow_run(db=db, request=request), message="工作流已人工续跑")
 
 
 @router.get("/diagnostics/overview")
