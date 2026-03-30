@@ -1,4 +1,4 @@
-# Novel Multi-Agent Backend V15 Diagnostics P0
+# novel-creation-system V15 Diagnostics P0
 
 这一版新增了 **真实 Provider 调用治理**，重点不是扩业务功能，而是把模型调用真正做稳。
 
