@@ -1,0 +1,30 @@
+# AGENTS.md
+
+## Hard constraints
+- 必须严格遵循 V1 文档，不得另起一套架构
+- Canon / Story State 是系统中枢
+- Canon 只能通过 ChangeSet 写入
+- 主链必须是：目标 -> 蓝图 -> 场景 -> 草稿 -> Gate -> ChangeSet -> Publish
+- Agent 是受控执行者，不是系统中枢
+- 多题材走：通用底座 + 题材配置层 + 规则包
+- 只能增量修改，不得重写整套系统
+
+## Working rules
+- 先审计，再改代码
+- 先计划，再实现
+- 一次只改一个高价值模块
+- 修改后必须说明影响范围和验证方法
+
+## Required docs
+在进行任何代码修改之前, 请按照以下的顺序阅读位于 /md 目录下的这些文件:
+1. 小说多Agent系统最终架构设计文档_V1.md
+2. Story_State_Canon_State_状态模型设计_V1.md
+3. 结构化创作对象 Schema 设计_V1.md
+4. 章节循环工作流说明_V1.md
+5. 多层质量闸门设计_V1.md
+6. 题材配置层与规则包设计_V1.md
+7. Prompt_设计说明_V1.md
+8. 结构化输出解析与容错规范_V1.md
+9. API_接口与服务边界说明_V1.md
+10. 数据库与存储设计_V1.md
+11. 字段命名与对象映射总表_V1.md
