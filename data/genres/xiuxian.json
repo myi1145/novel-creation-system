@@ -1,0 +1,20 @@
+{
+  "genre_id": "genre_xiuxian_v1",
+  "genre_name": "修仙",
+  "base_genre": null,
+  "tags": ["ensemble_cast", "clear_good_evil", "single_heroine_dual_power"],
+  "world": {
+    "core_axis": "宗门修行、仙魔对立、境界晋升",
+    "power_system": "炼气-筑基-金丹-元婴-化神",
+    "taboos": ["现代互联网黑话", "过强游戏UI感"]
+  },
+  "narrative": {
+    "chapter_target_words": 3200,
+    "preferred_conflict_types": ["宗门考核", "秘境历练", "仙魔冲突"],
+    "hook_style": "章末留悬念或关系推进"
+  },
+  "style": {
+    "tone": "东方幻想、克制、沉浸",
+    "banned_terms": ["BUG", "副本", "任务面板"]
+  }
+}
