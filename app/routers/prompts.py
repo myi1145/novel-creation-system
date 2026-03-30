@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post('/templates/seed-defaults')
 def seed_default_templates(db: Session = Depends(get_db)) -> dict:
     prompt_template_service.ensure_default_templates(db)
-    return success_response(data={"seeded": True}, message='default prompt templates ensured')
+    return success_response(data={"seeded": True}, message='默认 Prompt 模板已初始化')
 
 
 @router.get('/templates')
@@ -34,19 +34,19 @@ def list_prompt_templates(
         scope_key=scope_key,
         status=status,
     )
-    return success_response(data=[item.model_dump(mode='json') for item in items], message='prompt templates fetched')
+    return success_response(data=[item.model_dump(mode='json') for item in items], message='Prompt 模板列表获取成功')
 
 
 @router.post('/templates')
 def create_prompt_template(request: CreatePromptTemplateRequest, db: Session = Depends(get_db)) -> dict:
     item = prompt_template_service.create_template(db=db, request=request)
-    return success_response(data=item.model_dump(mode='json'), message='prompt template created')
+    return success_response(data=item.model_dump(mode='json'), message='Prompt 模板已创建')
 
 
 @router.post('/templates/{template_id}/activate')
 def activate_prompt_template(template_id: str, db: Session = Depends(get_db)) -> dict:
     item = prompt_template_service.activate_template(db=db, template_id=template_id)
-    return success_response(data=item.model_dump(mode='json'), message='prompt template activated')
+    return success_response(data=item.model_dump(mode='json'), message='Prompt 模板已激活')
 
 
 @router.post('/templates/resolve-preview')
@@ -60,4 +60,4 @@ def resolve_prompt_preview(request: PromptResolvePreviewRequest, db: Session = D
         provider_scope=request.provider_scope,
         render_context=request.render_context,
     )
-    return success_response(data=item.model_dump(mode='json'), message='prompt template resolved')
+    return success_response(data=item.model_dump(mode='json'), message='Prompt 模板解析预览成功')

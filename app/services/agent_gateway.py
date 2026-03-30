@@ -133,7 +133,7 @@ class MockAgentProvider:
             f"场景数量：{len(scenes)}\n"
             f"关联伏笔：{', '.join(open_loops) if open_loops else '无'}\n"
             f"Prompt 模板：{prompt.template_key}@v{prompt.template_version}\n"
-            "当前使用 Mock Agent Provider；后续可切换为 OpenAI Compatible Provider。"
+            "当前使用 mock provider；后续可切换到 openai_compatible provider。"
         )
         return {
             "content": content,
@@ -163,7 +163,7 @@ class MockAgentProvider:
             f"修订指令：{revision_instruction}\n"
             f"重点处理：{'; '.join(issue_summaries) if issue_summaries else '根据 Gate 结果补强叙事与结构。'}\n"
             f"Prompt 模板：{prompt.template_key}@v{prompt.template_version}\n"
-            "当前使用 Mock Agent Provider 生成修订版。"
+            "当前使用 mock provider 生成修订版。"
         )
         return {
             "content": revised_content,
@@ -184,13 +184,13 @@ class MockAgentProvider:
         override_role = None
 
         if gate_name == "canon_gate":
-            issues.append({"severity": "S0", "message": "当前为 Mock Canon 预检查，占位通过。", "suggestion": "后续可替换为真实 Canon Judge。"})
+            issues.append({"severity": "S0", "message": "当前为 mock Canon 预检查，占位通过。", "suggestion": "后续可替换为真实 Canon 审查器。"})
         elif gate_name == "style_gate" and len(content) < 120:
             issues.append({"severity": "S1", "message": "正文偏短，风格判断样本有限。", "suggestion": "可增加更多正文后再做风格判断。"})
         elif gate_name == "publish_gate" and "占位" in content:
-            issues.append({"severity": "S1", "message": "正文仍带有占位痕迹。", "suggestion": "接入真实 Writer Provider 后再发布正式样章。"})
+            issues.append({"severity": "S1", "message": "正文仍带有占位痕迹。", "suggestion": "接入真实 writer provider 后再发布正式样章。"})
         elif gate_name not in {"schema_gate", "canon_gate", "style_gate", "publish_gate", "narrative_gate", "voice_gate"}:
-            issues.append({"severity": "S1", "message": f"{gate_name} 当前走 Mock Review。", "suggestion": "后续替换为真实 Reviewer Agent。"})
+            issues.append({"severity": "S1", "message": f"{gate_name} 当前走 mock review。", "suggestion": "后续替换为真实 reviewer agent。"})
 
         highest_severity = _highest_severity_value(issues)
         if highest_severity in {"S3", "S4"}:
@@ -362,7 +362,7 @@ class OpenAICompatibleProvider:
             error_type = "http_5xx" if status_code >= 500 else "http_4xx"
             retryable = status_code in settings.agent_retryable_status_codes
             raise AgentProviderRequestError(
-                f"Provider HTTP 错误: {status_code}",
+                f"provider HTTP 错误: {status_code}",
                 error_type=error_type,
                 retryable=retryable,
                 status_code=status_code,
@@ -370,7 +370,7 @@ class OpenAICompatibleProvider:
         except (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError) as exc:
             raise AgentProviderRequestError(f"Provider 网络错误: {exc}", error_type="network", retryable=True) from exc
         except Exception as exc:  # noqa: BLE001
-            raise AgentProviderRequestError(f"调用 OpenAI Compatible Provider 失败: {exc}", error_type="provider_error", retryable=False) from exc
+            raise AgentProviderRequestError(f"调用 openai_compatible provider 失败: {exc}", error_type="provider_error", retryable=False) from exc
 
         try:
             data = response.json()
@@ -379,7 +379,7 @@ class OpenAICompatibleProvider:
             raise AgentProviderRequestError("Provider 返回结构无法解析", error_type="parse", retryable=False) from exc
 
 
-# helpers
+# 辅助函数
 
 def _extract_json_fragment(text: str) -> str:
     stripped = text.strip()
@@ -689,7 +689,7 @@ class AgentGateway:
             decision = "accepted"
             route = "continue"
             if not normalized.get("patch_operations"):
-                issues.append(_build_parse_issue("E003", "P1", "L2", "ChangeSet Proposal 缺少 patch_operations，已转人工审阅", "patch_operations"))
+                issues.append(_build_parse_issue("E003", "P1", "L2", "ChangeSet 提议缺少 patch_operations，已转人工审阅", "patch_operations"))
                 normalized["review_recommendation"] = "human_review"
                 decision = "human_review"
                 route = "human_review"

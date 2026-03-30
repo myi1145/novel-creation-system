@@ -217,7 +217,7 @@ class WorkflowService:
 
     def _build_sequence_batch_report(self, db: Session, sequence_run: WorkflowRunORM) -> ChapterSequenceBatchReport:
         if sequence_run.source_type != "chapter_sequence":
-            raise ValidationError("指定的 workflow_run 不是 chapter sequence run")
+            raise ValidationError("指定的 workflow_run 不是 chapter_sequence 运行记录")
 
         metadata = dict(sequence_run.run_metadata or {})
         chapter_results_meta = sorted(list(metadata.get("chapter_results") or []), key=lambda item: item.get("chapter_no") or 0)
@@ -420,7 +420,7 @@ class WorkflowService:
             ChapterSequenceAcceptanceCheck(
                 check_name="continuity_coverage",
                 status=continuity_status,
-                message="每章都记录了 continuity pack" if continuity_status == "pass" else "存在章节未写入 continuity pack，需要检查连续上下文解析链路",
+                message="每章都记录了 continuity_pack" if continuity_status == "pass" else "存在章节未写入 continuity_pack，需要检查连续上下文解析链路",
                 metrics={"processed": processed_count, "continuity_applied": continuity_count},
             )
         )
@@ -447,7 +447,7 @@ class WorkflowService:
             ChapterSequenceAcceptanceCheck(
                 check_name="agent_call_health",
                 status=agent_health_status,
-                message="本批次 Agent 调用未出现 error" if agent_health_status == "pass" else "本批次存在 Agent error，需要检查 provider fallback / prompt / timeout",
+                message="本批次 Agent 调用未出现 error 记录" if agent_health_status == "pass" else "本批次存在 Agent error，需要检查 provider fallback、Prompt 配置与 timeout 策略",
                 metrics={"failed_agent_call_count": failed_agent_call_count, "processed_chapter_count": processed_count},
             )
         )
@@ -456,7 +456,7 @@ class WorkflowService:
             ChapterSequenceAcceptanceCheck(
                 check_name="post_publish_updates",
                 status=derived_status,
-                message="所有已发布章节都完成了 post-publish derived updates" if derived_status == "pass" else "部分已发布章节的 derived update 未完整完成，需要检查 post-publish 任务壳层",
+                message="所有已发布章节都完成了 post_publish 派生更新" if derived_status == "pass" else "部分已发布章节的 derived_update 未完整完成，需要检查 post_publish 任务壳层",
                 metrics={"published": published_count, "derived_updates_ready": derived_ready_count},
             )
         )
@@ -464,19 +464,19 @@ class WorkflowService:
         recommendations: list[str] = []
         if summary["attention_chapter_count"]:
             stalled = ", ".join(str(item.chapter_no) for item in chapter_reports if item.stage_status == "attention_required")
-            recommendations.append(f"优先处理 attention_required 的章节：{stalled}。建议先完成蓝图选择或人工审阅，再继续 sequence 验证。")
+            recommendations.append(f"优先处理 attention_required 状态章节：{stalled}。建议先完成蓝图选择或人工审阅，再继续 sequence 验证。")
         if summary["failed_chapter_count"]:
             failed = ", ".join(str(item.chapter_no) for item in chapter_reports if item.stage_status == "failed")
-            recommendations.append(f"存在失败章节：{failed}。建议先查看这些章节的 workflow run detail 与 immutable logs，再决定是否重跑。")
+            recommendations.append(f"存在失败章节：{failed}。建议先查看这些章节的 workflow_run 详情与 immutable_logs，再决定是否重跑。")
         narrative_failures = next((item.failed_reviews for item in gate_stats if item.gate_name == GateName.NARRATIVE.value), 0)
         if narrative_failures:
-            recommendations.append("Narrative Gate 仍是主要阻塞点之一，建议优先检查 blueprint 与 draft 的叙事目标对齐，以及 revision 指令是否足够具体。")
+            recommendations.append("narrative_gate 仍是主要阻塞点之一，建议优先检查 blueprint 与 draft 的叙事目标对齐，以及 revision 指令是否足够具体。")
         if failed_agent_call_count:
-            recommendations.append("检测到 Agent 调用错误，建议查看 agent-call stats 和 provider governance 快照，确认是否需要收紧超时或补 provider fallback。")
+            recommendations.append("检测到 Agent 调用错误，建议查看 agent_call 统计和 provider_governance 快照，确认是否需要收紧超时或补齐 provider fallback。")
         if continuity_count < processed_count:
-            recommendations.append("存在章节未记录 continuity pack，建议在继续多章样书验证前先排查 continuity resolver 与 workflow metadata 回写。")
+            recommendations.append("存在章节未记录 continuity_pack，建议在继续多章样书验证前先排查 continuity_resolver 与 workflow_metadata 回写。")
         if summary_count < published_count:
-            recommendations.append("部分已发布章节缺少 chapter_summary，建议重新执行 post-publish derived updates，避免后续章节缺少稳定 continuity 输入。")
+            recommendations.append("部分已发布章节缺少 chapter_summary，建议重新执行 post_publish derived_update，避免后续章节缺少稳定 continuity 输入。")
         if not recommendations:
             recommendations.append("本批次 sequence 报告未发现明显阻塞，可进入更长序列的样书联调或扩大到 5~10 章验证。")
 
@@ -625,7 +625,7 @@ class WorkflowService:
             notes=request.notes,
         )
         db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="pause", message="workflow paused", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="pause", message="工作流已暂停", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def resume_workflow_run(self, db: Session, request: ResumeWorkflowRunRequest) -> dict:
         run = workflow_run_service.resume_run(
@@ -636,7 +636,7 @@ class WorkflowService:
             notes=request.notes,
         )
         db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="resume", message="workflow resumed", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="resume", message="工作流已恢复", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def request_manual_takeover(self, db: Session, request: ManualTakeoverRequest) -> dict:
         run = workflow_run_service.request_manual_takeover(
@@ -648,7 +648,7 @@ class WorkflowService:
             handoff_notes=request.handoff_notes,
         )
         db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_takeover", message="workflow moved to manual_review", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_takeover", message="工作流已切换到 manual_review", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def mark_human_reviewed(self, db: Session, request: MarkHumanReviewedRequest) -> dict:
         run = workflow_run_service.mark_human_reviewed(
@@ -661,7 +661,7 @@ class WorkflowService:
             resume_from_step=request.resume_from_step,
         )
         db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="human review recorded", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="人工审阅结果已记录", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def manual_continue_workflow_run(self, db: Session, request: ManualContinueWorkflowRunRequest) -> dict:
         run = workflow_run_service.manual_continue(
@@ -673,7 +673,7 @@ class WorkflowService:
             notes=request.notes,
         )
         db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="workflow manually continued", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="工作流已人工续跑", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def _get_goal_for_execution(self, db: Session, request: ExecuteChapterCycleRequest) -> ChapterGoal:
         if request.chapter_goal_id:

@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post("/load")
 def load_genre(request: LoadGenreRequest, db: Session = Depends(get_db)) -> dict:
     genre = genre_service.load_genre(db=db, request=request)
-    return success_response(data=genre.model_dump(mode="json"), message="genre loaded")
+    return success_response(data=genre.model_dump(mode="json"), message="题材配置已装载")
 
 
 @router.get("")

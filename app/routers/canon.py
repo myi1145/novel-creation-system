@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post("/snapshots/init")
 def init_snapshot(request: InitCanonSnapshotRequest, db: Session = Depends(get_db)) -> dict:
     snapshot = canon_service.init_snapshot(db=db, request=request)
-    return success_response(data=snapshot.model_dump(mode="json"), message="canon snapshot initialized")
+    return success_response(data=snapshot.model_dump(mode="json"), message="Canon 快照已初始化")
 
 
 @router.get("/snapshots")
