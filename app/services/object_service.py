@@ -269,8 +269,8 @@ class ObjectService:
     def _apply_state_scope(self, query: Any, orm_class: type[TOrm], state_scope: str) -> Any:
         normalized_scope = state_scope.strip().lower()
         if normalized_scope not in self._VALID_STATE_SCOPES:
-            allowed = ", ".join(sorted(self._VALID_STATE_SCOPES))
-            raise ConflictError(f"state_scope 不合法: {state_scope}。仅支持: {allowed}")
+            allowed = " / ".join(sorted(self._VALID_STATE_SCOPES))
+            raise ConflictError(f"state_scope 参数不合法，当前值: {state_scope}。仅支持: {allowed}")
         if normalized_scope == "canon":
             return query.filter(orm_class.is_canon_bound.is_(True))
         if normalized_scope == "working":
