@@ -223,53 +223,63 @@ class ChangeSetService:
 
     def propose(self, db: Session, request: ProposeChangeSetRequest) -> ChangeSet:
         set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="changeset_service", event="changeset.propose", status="started")
-        logger.info("开始创建 ChangeSet 提案")
-        project = db.get(ProjectORM, request.project_id)
-        if project is None:
-            raise NotFoundError("项目不存在，无法创建 ChangeSet")
-        self._validate_patch_operations(request.patch_operations)
-        draft = db.get(ChapterDraftORM, request.source_ref) if request.source_ref else None
-        run = workflow_run_service.ensure_run(
-            db=db,
-            project_id=request.project_id,
-            workflow_run_id=request.workflow_run_id or getattr(draft, "workflow_run_id", None),
-            trace_id=request.trace_id or getattr(draft, "trace_id", None),
-            workflow_name="chapter_cycle_workflow_v1",
-            current_step="changeset_proposed",
-            source_type=request.source_type,
-            source_ref=request.source_ref,
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="changeset_service",
+            event="changeset.propose",
+            message_started="开始创建 ChangeSet 提案",
+            start_fields={"project_id": request.project_id, "workflow_run_id": request.workflow_run_id, "source_ref": request.source_ref},
         )
-        changeset = ChangeSetORM(
-            project_id=request.project_id,
-            source_type=request.source_type,
-            workflow_run_id=run.id,
-            trace_id=run.trace_id,
-            source_ref=request.source_ref,
-            rationale=request.rationale,
-            patch_operations=request.patch_operations,
-            required_gate_names=self._infer_required_gate_names(request.source_type, request.patch_operations),
-            status=ChangeSetStatus.PROPOSED.value,
-        )
-        db.add(changeset)
-        db.flush()
-        if draft is not None and draft.project_id == request.project_id:
-            chapter_state_service.transition(
+        try:
+            project = db.get(ProjectORM, request.project_id)
+            if project is None:
+                raise NotFoundError("项目不存在，无法创建 ChangeSet")
+            self._validate_patch_operations(request.patch_operations)
+            draft = db.get(ChapterDraftORM, request.source_ref) if request.source_ref else None
+            run = workflow_run_service.ensure_run(
                 db=db,
-                draft=draft,
-                to_status=ChapterStatus.CHANGESET_PROPOSED.value,
-                trigger_type="changeset_proposed",
-                trigger_ref=changeset.id,
+                project_id=request.project_id,
+                workflow_run_id=request.workflow_run_id or getattr(draft, "workflow_run_id", None),
+                trace_id=request.trace_id or getattr(draft, "trace_id", None),
+                workflow_name="chapter_cycle_workflow_v1",
+                current_step="changeset_proposed",
+                source_type=request.source_type,
+                source_ref=request.source_ref,
+            )
+            changeset = ChangeSetORM(
+                project_id=request.project_id,
+                source_type=request.source_type,
                 workflow_run_id=run.id,
                 trace_id=run.trace_id,
-                reason="正文草稿已生成 ChangeSet 提案",
-                metadata={"changeset_id": changeset.id},
+                source_ref=request.source_ref,
+                rationale=request.rationale,
+                patch_operations=request.patch_operations,
+                required_gate_names=self._infer_required_gate_names(request.source_type, request.patch_operations),
+                status=ChangeSetStatus.PROPOSED.value,
             )
-        workflow_run_service.update_progress(db=db, run=run, current_step="changeset_proposed", source_ref=changeset.id)
-        db.add(ImmutableLogORM(event_type="changeset_proposed", project_id=request.project_id, workflow_run_id=run.id, trace_id=run.trace_id, event_payload={"changeset_id": changeset.id, "source_type": request.source_type, "source_ref": request.source_ref}))
-        db.commit()
-        db.refresh(changeset)
-        logger.info("ChangeSet 提案创建成功", extra={"extra_fields": {"event": "changeset.propose", "status": "success", "workflow_run_id": run.id, "summary": f"changeset_id={changeset.id}"}})
-        return ChangeSet.model_validate(changeset)
+            db.add(changeset)
+            db.flush()
+            if draft is not None and draft.project_id == request.project_id:
+                chapter_state_service.transition(
+                    db=db,
+                    draft=draft,
+                    to_status=ChapterStatus.CHANGESET_PROPOSED.value,
+                    trigger_type="changeset_proposed",
+                    trigger_ref=changeset.id,
+                    workflow_run_id=run.id,
+                    trace_id=run.trace_id,
+                    reason="正文草稿已生成 ChangeSet 提案",
+                    metadata={"changeset_id": changeset.id},
+                )
+            workflow_run_service.update_progress(db=db, run=run, current_step="changeset_proposed", source_ref=changeset.id)
+            db.add(ImmutableLogORM(event_type="changeset_proposed", project_id=request.project_id, workflow_run_id=run.id, trace_id=run.trace_id, event_payload={"changeset_id": changeset.id, "source_type": request.source_type, "source_ref": request.source_ref}))
+            db.commit()
+            db.refresh(changeset)
+            scope.success("ChangeSet 已提议", workflow_run_id=run.id, changeset_id=changeset.id)
+            return ChangeSet.model_validate(changeset)
+        except Exception as exc:
+            scope.failure("ChangeSet 提议失败", exc, workflow_run_id=request.workflow_run_id, source_ref=request.source_ref)
+            raise
 
     def approve(self, db: Session, changeset_id: str, approved_by: str) -> ChangeSet:
         set_log_context(module="changeset_service", event="changeset.approve", status="started")
@@ -339,7 +349,13 @@ class ChangeSetService:
 
     def apply(self, db: Session, changeset_id: str) -> ChangeSet:
         set_log_context(module="changeset_service", event="changeset.apply", status="started")
-        logger.info("开始应用 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="changeset_service",
+            event="changeset.apply",
+            message_started="开始应用 ChangeSet",
+            start_fields={"changeset_id": changeset_id},
+        )
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -441,7 +457,7 @@ class ChangeSetService:
             )
             db.commit()
             db.refresh(changeset)
-            logger.info("ChangeSet 应用成功", extra={"extra_fields": {"event": "changeset.apply", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
+            scope.success("ChangeSet 已应用", workflow_run_id=changeset.workflow_run_id, changeset_id=changeset.id, summary=f"result_snapshot_id={new_snapshot.id}")
             return ChangeSet.model_validate(changeset)
         except Exception as exc:
             db.rollback()
@@ -453,7 +469,7 @@ class ChangeSetService:
                 extra_metadata={"changeset_id": changeset.id, "error": str(exc)},
             )
             db.commit()
-            logger.exception("ChangeSet 应用失败", extra={"extra_fields": {"event": "changeset.apply", "status": "failed", "error_message": "ChangeSet 应用失败，请检查闸门与快照状态"}})
+            scope.failure("ChangeSet 应用失败", exc, workflow_run_id=changeset.workflow_run_id, changeset_id=changeset.id)
             raise
 
     def rollback(

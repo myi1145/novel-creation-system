@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.core.business_logging import StepLogScope
 from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
@@ -123,85 +124,101 @@ class DerivedUpdateService:
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest, *, commit: bool = True) -> DerivedUpdateBatchResult:
         set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="derived_update_service", event="derived_updates.run", status="started")
-        logger.info("开始执行发布后派生更新")
-        published = db.get(PublishedChapterORM, request.published_chapter_id)
-        if published is None or published.project_id != request.project_id:
-            raise NotFoundError("已发布章节不存在")
-        project = db.get(ProjectORM, request.project_id)
-        if project is None:
-            raise NotFoundError("项目不存在")
-        run = workflow_run_service.ensure_run(
-            db=db,
-            project_id=request.project_id,
-            workflow_run_id=request.workflow_run_id or published.workflow_run_id,
-            trace_id=request.trace_id or published.trace_id,
-            workflow_name="chapter_cycle_workflow_v1",
-            chapter_no=published.chapter_no,
-            source_type="derived_update_task",
-            source_ref=published.id,
-            current_step="post_publish_updates_running",
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="derived_update_service",
+            event="derived_updates.run",
+            message_started="开始执行发布后派生更新",
+            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id, "workflow_run_id": request.workflow_run_id},
         )
-        existing_payloads = list(dict(published.publish_metadata or {}).get("derived_update_tasks") or [])
-        existing_by_name = {}
-        for payload in existing_payloads:
-            try:
-                item = self._task_from_existing(payload)
-            except Exception:
-                continue
-            existing_by_name[item.task_name] = item
-
-        tasks: list[DerivedUpdateTask] = []
-        for task_name in request.task_names:
-            should_rerun = request.force_rerun_tasks or (request.force_refresh_summary and task_name in {"refresh_chapter_summary", "refresh_next_chapter_seed"})
-            existing = existing_by_name.get(task_name)
-            if existing is not None and not should_rerun:
-                tasks.append(existing)
-                continue
-            tasks.append(self._execute_task(db=db, request=request, published=published, run_id=run.id, trace_id=run.trace_id, task_name=task_name))
-
-        overall_status = "completed_with_warnings" if any(task.status == "failed" for task in tasks) else "completed"
-        generated_at = datetime.now(timezone.utc)
-        result = DerivedUpdateBatchResult(
-            project_id=request.project_id,
-            published_chapter_id=published.id,
-            workflow_run_id=run.id,
-            trace_id=run.trace_id,
-            status=overall_status,
-            tasks=tasks,
-            generated_at=generated_at,
-        )
-        self._persist_result(db=db, published=published, result=result)
-        workflow_run_service.update_progress(
-            db=db,
-            run=run,
-            current_step="post_publish_updates_completed",
-            status=run.status,
-            extra_metadata={
-                "derived_update_status": overall_status,
-                "derived_update_task_count": len(tasks),
-                "latest_published_chapter_id": published.id,
-            },
-        )
-        db.add(
-            ImmutableLogORM(
-                event_type="post_publish_updates_completed",
+        try:
+            published = db.get(PublishedChapterORM, request.published_chapter_id)
+            if published is None or published.project_id != request.project_id:
+                raise NotFoundError("已发布章节不存在")
+            project = db.get(ProjectORM, request.project_id)
+            if project is None:
+                raise NotFoundError("项目不存在")
+            run = workflow_run_service.ensure_run(
+                db=db,
                 project_id=request.project_id,
+                workflow_run_id=request.workflow_run_id or published.workflow_run_id,
+                trace_id=request.trace_id or published.trace_id,
+                workflow_name="chapter_cycle_workflow_v1",
+                chapter_no=published.chapter_no,
+                source_type="derived_update_task",
+                source_ref=published.id,
+                current_step="post_publish_updates_running",
+            )
+            existing_payloads = list(dict(published.publish_metadata or {}).get("derived_update_tasks") or [])
+            existing_by_name = {}
+            for payload in existing_payloads:
+                try:
+                    item = self._task_from_existing(payload)
+                except Exception:
+                    continue
+                existing_by_name[item.task_name] = item
+
+            tasks: list[DerivedUpdateTask] = []
+            for task_name in request.task_names:
+                should_rerun = request.force_rerun_tasks or (request.force_refresh_summary and task_name in {"refresh_chapter_summary", "refresh_next_chapter_seed"})
+                existing = existing_by_name.get(task_name)
+                if existing is not None and not should_rerun:
+                    tasks.append(existing)
+                    continue
+                tasks.append(self._execute_task(db=db, request=request, published=published, run_id=run.id, trace_id=run.trace_id, task_name=task_name))
+
+            overall_status = "completed_with_warnings" if any(task.status == "failed" for task in tasks) else "completed"
+            generated_at = datetime.now(timezone.utc)
+            result = DerivedUpdateBatchResult(
+                project_id=request.project_id,
+                published_chapter_id=published.id,
                 workflow_run_id=run.id,
                 trace_id=run.trace_id,
-                event_payload={
-                    "published_chapter_id": published.id,
-                    "status": overall_status,
-                    "task_names": [task.task_name for task in tasks],
+                status=overall_status,
+                tasks=tasks,
+                generated_at=generated_at,
+            )
+            self._persist_result(db=db, published=published, result=result)
+            workflow_run_service.update_progress(
+                db=db,
+                run=run,
+                current_step="post_publish_updates_completed",
+                status=run.status,
+                extra_metadata={
+                    "derived_update_status": overall_status,
+                    "derived_update_task_count": len(tasks),
+                    "latest_published_chapter_id": published.id,
                 },
             )
-        )
-        if commit:
-            db.commit()
-            db.refresh(published)
-        else:
-            db.flush()
-        logger.info("发布后派生更新完成", extra={"extra_fields": {"event": "derived_updates.run", "status": "success", "workflow_run_id": run.id, "summary": f"task_count={len(tasks)}"}})
-        return result
+            db.add(
+                ImmutableLogORM(
+                    event_type="post_publish_updates_completed",
+                    project_id=request.project_id,
+                    workflow_run_id=run.id,
+                    trace_id=run.trace_id,
+                    event_payload={
+                        "published_chapter_id": published.id,
+                        "status": overall_status,
+                        "task_names": [task.task_name for task in tasks],
+                    },
+                )
+            )
+            if commit:
+                db.commit()
+                db.refresh(published)
+            else:
+                db.flush()
+            scope.success(
+                "发布后派生更新完成",
+                workflow_run_id=run.id,
+                published_chapter_id=published.id,
+                summary=f"task_count={len(tasks)}",
+                stop_reason=("completed_with_warnings" if overall_status == "completed_with_warnings" else None),
+            )
+            return result
+        except Exception as exc:
+            scope.failure("发布后派生更新失败", exc, project_id=request.project_id, published_chapter_id=request.published_chapter_id)
+            raise
 
     def get_post_publish_updates(self, db: Session, *, project_id: str, published_chapter_id: str) -> DerivedUpdateBatchResult | None:
         published = db.get(PublishedChapterORM, published_chapter_id)

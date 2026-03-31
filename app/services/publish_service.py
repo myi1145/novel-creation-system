@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.business_logging import StepLogScope
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
@@ -31,7 +32,13 @@ class PublishService:
 
     def publish_draft(self, db: Session, request: PublishDraftRequest) -> PublishResult:
         set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="publish_service", event="publish", status="started")
-        logger.info("开始发布章节草稿")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="publish_service",
+            event="publish",
+            message_started="开始发布章节草稿",
+            start_fields={"project_id": request.project_id, "draft_id": request.draft_id, "workflow_run_id": request.workflow_run_id},
+        )
         draft = db.get(ChapterDraftORM, request.draft_id)
         if draft is None or draft.project_id != request.project_id:
             raise NotFoundError("正文草稿不存在")
@@ -226,7 +233,7 @@ class PublishService:
             db.commit()
             db.refresh(published_chapter)
             db.refresh(publish_record)
-            logger.info("章节发布成功", extra={"extra_fields": {"event": "publish", "status": "success", "workflow_run_id": run.id, "summary": f"published_chapter_id={published_chapter.id}"}})
+            scope.success("章节发布完成", workflow_run_id=run.id, chapter_no=goal.chapter_no, draft_id=draft.id, changeset_id=changeset.id, published_chapter_id=published_chapter.id)
             return PublishResult(
                 published_chapter=PublishedChapter.model_validate(published_chapter),
                 publish_record=PublishRecord.model_validate(publish_record),
@@ -268,7 +275,7 @@ class PublishService:
                     extra_metadata={"error": str(exc)},
                 )
                 db.commit()
-            logger.exception("章节发布失败", extra={"extra_fields": {"event": "publish", "status": "failed", "error_message": "发布链路执行异常"}})
+            scope.failure("章节发布失败", exc, workflow_run_id=run.id, draft_id=request.draft_id)
             raise
 
     def _ensure_required_gates(self, db: Session, project_id: str, draft_id: str) -> None:

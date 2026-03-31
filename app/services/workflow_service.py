@@ -640,15 +640,28 @@ class WorkflowService:
         return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="pause", message="工作流已暂停", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def resume_workflow_run(self, db: Session, request: ResumeWorkflowRunRequest) -> dict:
-        run = workflow_run_service.resume_run(
-            db=db,
-            workflow_run_id=request.workflow_run_id,
-            resumed_by=request.resumed_by,
-            resume_from_step=request.resume_from_step,
-            notes=request.notes,
+        set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="resume_workflow_run", status="started")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="workflow_service",
+            event="resume_workflow_run",
+            message_started="开始恢复工作流执行",
+            start_fields={"workflow_run_id": request.workflow_run_id, "resume_from_step": request.resume_from_step},
         )
-        db.commit()
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="resume", message="工作流已恢复", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        try:
+            run = workflow_run_service.resume_run(
+                db=db,
+                workflow_run_id=request.workflow_run_id,
+                resumed_by=request.resumed_by,
+                resume_from_step=request.resume_from_step,
+                notes=request.notes,
+            )
+            db.commit()
+            scope.success("工作流已从人工节点恢复执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
+            return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="resume", message="工作流已恢复", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        except Exception as exc:
+            scope.failure("恢复工作流执行失败", exc, workflow_run_id=request.workflow_run_id)
+            raise
 
     def request_manual_takeover(self, db: Session, request: ManualTakeoverRequest) -> dict:
         run = workflow_run_service.request_manual_takeover(
@@ -663,20 +676,30 @@ class WorkflowService:
         return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_takeover", message="工作流已切换到 manual_review", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def mark_human_reviewed(self, db: Session, request: MarkHumanReviewedRequest) -> dict:
-        set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="human_review.resume", status="started")
-        logger.info("开始记录人工审阅结果")
-        run = workflow_run_service.mark_human_reviewed(
-            db=db,
-            workflow_run_id=request.workflow_run_id,
-            reviewed_by=request.reviewed_by,
-            review_notes=request.review_notes,
-            next_action=request.next_action,
-            resume_run=request.resume_run,
-            resume_from_step=request.resume_from_step,
+        set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="mark_human_reviewed", status="started")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="workflow_service",
+            event="mark_human_reviewed",
+            message_started="开始记录人工审阅结果",
+            start_fields={"workflow_run_id": request.workflow_run_id, "next_action": request.next_action, "resume_run": request.resume_run},
         )
-        db.commit()
-        logger.info("人工审阅结果记录成功", extra={"extra_fields": {"event": "human_review.resume", "status": "success", "workflow_run_id": run.id}})
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="人工审阅结果已记录", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        try:
+            run = workflow_run_service.mark_human_reviewed(
+                db=db,
+                workflow_run_id=request.workflow_run_id,
+                reviewed_by=request.reviewed_by,
+                review_notes=request.review_notes,
+                next_action=request.next_action,
+                resume_run=request.resume_run,
+                resume_from_step=request.resume_from_step,
+            )
+            db.commit()
+            scope.success("人工审阅结果记录成功", workflow_run_id=run.id, current_step=run.current_step, next_action=request.next_action)
+            return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="人工审阅结果已记录", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        except Exception as exc:
+            scope.failure("人工审阅结果记录失败", exc, workflow_run_id=request.workflow_run_id)
+            raise
 
     def manual_continue_workflow_run(self, db: Session, request: ManualContinueWorkflowRunRequest) -> dict:
         set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="manual_continue", status="started")
