@@ -29,10 +29,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 message = "当前项目下该章节目标已存在，不能重复创建"
             elif "manual" in exc.message or "人工" in exc.message:
                 message = "非法恢复执行：请先完成人工审阅流程再继续"
-        logger.warning(
-            f"业务处理失败：{message}",
-            extra={"extra_fields": {"error_code": exc.code, "error_message": message}},
-        )
+        logger.warning(message)
         return JSONResponse(
             status_code=exc.status_code,
             content=error_response(code=exc.code, message=message, details=exc.details),

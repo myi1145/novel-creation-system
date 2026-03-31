@@ -6,75 +6,30 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import PROJECT_ROOT
-from app.core.logging_context import get_log_context
 
 _LOG_INITIALIZED = False
 
 
+class ContextMergingLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        extra = dict(self.extra)
+        passed_extra = kwargs.get("extra")
+        if isinstance(passed_extra, dict):
+            extra.update(passed_extra)
+        kwargs["extra"] = extra
+        return msg, kwargs
+
+
 class HumanReadableFormatter(logging.Formatter):
-    PRIORITY_KEYS = [
-        "chapter_no",
-        "next_action",
-        "stop_reason",
-        "error_code",
-        "error_type",
-    ]
-    BLOCKED_KEYS = {
-        "module",
-        "event",
-        "status",
-        "request_id",
-        "trace_id",
-        "workflow_run_id",
-        "project_id",
-        "chapter_id",
-        "method",
-        "path",
-        "status_code",
-        "duration_ms",
-        "latency_ms",
-    }
-
-    def _stringify(self, value: Any) -> str:
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (list, tuple)):
-            return ",".join(str(item) for item in value)
-        return str(value)
-
     def format(self, record: logging.LogRecord) -> str:
-        combined = sanitize_for_logging(get_log_context())
-        extra_fields = getattr(record, "extra_fields", {})
-        if not isinstance(extra_fields, dict):
-            extra_fields = {}
-        combined.update(sanitize_for_logging(extra_fields))
         timestamp = self.formatTime(record, self.datefmt)
-        parts = [f"{timestamp} [{record.levelname}] {record.getMessage()}"]
-        if record.levelno == logging.INFO:
-            elapsed_ms = combined.get("latency_ms")
-            if elapsed_ms is None:
-                elapsed_ms = combined.get("elapsed_ms")
-            if elapsed_ms is not None and elapsed_ms != "":
-                parts.append(f" | 耗时={self._stringify(elapsed_ms)}ms")
-            return "".join(parts)
-        used: set[str] = set()
-        for key in self.PRIORITY_KEYS:
-            value = combined.get(key)
-            if value is None or value == "":
-                continue
-            parts.append(f" | {key}={self._stringify(value)}")
-            used.add(key)
-        for key in sorted(combined.keys()):
-            if key in used or key in self.BLOCKED_KEYS or key.endswith("_id"):
-                continue
-            value = combined.get(key)
-            if value is None or value == "":
-                continue
-            parts.append(f" | {key}={self._stringify(value)}")
+        message = f"{timestamp} [{record.levelname}] {record.getMessage()}"
+        elapsed_ms = getattr(record, "elapsed_ms", None)
+        if elapsed_ms is not None and elapsed_ms != "":
+            message = f"{message} | 耗时={elapsed_ms}ms"
         if record.exc_info:
-            error_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
-            parts.append(f" | error_type={error_type}")
-        return "".join(parts)
+            message = f"{message}\n{self.formatException(record.exc_info)}"
+        return message
 
 
 class RuntimeLogFilter(logging.Filter):
@@ -146,4 +101,4 @@ def setup_logging(level: str = "INFO") -> None:
 
 def get_logger(category: str = "app") -> logging.LoggerAdapter:
     logger = logging.getLogger(f"novel.{category}")
-    return logging.LoggerAdapter(logger, {"category": category})
+    return ContextMergingLoggerAdapter(logger, {"category": category})

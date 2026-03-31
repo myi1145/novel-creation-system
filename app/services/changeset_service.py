@@ -50,13 +50,6 @@ class ChangeSetService:
     _REQUIRED_PROPOSAL_GATES = [GateName.SCHEMA.value, GateName.CANON.value, GateName.NARRATIVE.value]
 
     def generate_proposal(self, db: Session, request: GenerateChangeSetProposalRequest) -> ChangeSetProposal:
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="changeset_service",
-            event="changeset.proposal.generate",
-            message_started="开始生成 ChangeSet",
-            start_fields={"project_id": request.project_id, "draft_id": request.draft_id},
-        )
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法生成 ChangeSet 提议")
@@ -218,7 +211,6 @@ class ChangeSetService:
             )
         else:
             db.commit()
-        scope.success("ChangeSet 已提议", project_id=request.project_id, workflow_run_id=run.id, draft_id=draft.id, blueprint_id=blueprint.id, candidate_count=len(proposal.patch_operations))
         return proposal
 
     def propose(self, db: Session, request: ProposeChangeSetRequest) -> ChangeSet:
@@ -227,7 +219,7 @@ class ChangeSetService:
             logger_name="workflow",
             module="changeset_service",
             event="changeset.propose",
-            message_started="开始创建 ChangeSet 提案",
+            message_started="开始生成 ChangeSet",
             start_fields={"project_id": request.project_id, "workflow_run_id": request.workflow_run_id, "source_ref": request.source_ref},
         )
         try:
@@ -275,7 +267,7 @@ class ChangeSetService:
             db.add(ImmutableLogORM(event_type="changeset_proposed", project_id=request.project_id, workflow_run_id=run.id, trace_id=run.trace_id, event_payload={"changeset_id": changeset.id, "source_type": request.source_type, "source_ref": request.source_ref}))
             db.commit()
             db.refresh(changeset)
-            scope.success("ChangeSet 已提议", workflow_run_id=run.id, changeset_id=changeset.id)
+            scope.success("ChangeSet 生成完成", workflow_run_id=run.id, changeset_id=changeset.id)
             return ChangeSet.model_validate(changeset)
         except Exception as exc:
             scope.failure("ChangeSet 提议失败", exc, workflow_run_id=request.workflow_run_id, source_ref=request.source_ref)
@@ -283,7 +275,13 @@ class ChangeSetService:
 
     def approve(self, db: Session, changeset_id: str, approved_by: str) -> ChangeSet:
         set_log_context(module="changeset_service", event="changeset.approve", status="started")
-        logger.info("开始审批 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="changeset_service",
+            event="changeset.approve",
+            message_started="开始审批 ChangeSet",
+            start_fields={"changeset_id": changeset_id},
+        )
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -309,7 +307,7 @@ class ChangeSetService:
         db.add(ImmutableLogORM(event_type="changeset_approved", project_id=changeset.project_id, workflow_run_id=changeset.workflow_run_id, trace_id=changeset.trace_id, event_payload={"changeset_id": changeset.id, "approved_by": approved_by}))
         db.commit()
         db.refresh(changeset)
-        logger.info("ChangeSet 审批通过", extra={"extra_fields": {"event": "changeset.approve", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
+        scope.success("ChangeSet 审批通过", workflow_run_id=changeset.workflow_run_id, changeset_id=changeset.id)
         return ChangeSet.model_validate(changeset)
 
     def reject(self, db: Session, changeset_id: str, rejected_by: str, reason: str | None = None) -> ChangeSet:
