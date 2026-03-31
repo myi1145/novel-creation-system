@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.business_logging import StepLogScope, truncate_ids
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import (
@@ -672,18 +673,28 @@ class WorkflowService:
 
     def manual_continue_workflow_run(self, db: Session, request: ManualContinueWorkflowRunRequest) -> dict:
         set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="manual_continue", status="started")
-        logger.info("开始人工续跑工作流")
-        run = workflow_run_service.manual_continue(
-            db=db,
-            workflow_run_id=request.workflow_run_id,
-            continued_by=request.continued_by,
-            reason=request.reason,
-            continue_from_step=request.continue_from_step,
-            notes=request.notes,
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="workflow_service",
+            event="manual_continue",
+            message_started="开始人工续跑工作流",
+            start_fields={"workflow_run_id": request.workflow_run_id, "continue_from_step": request.continue_from_step},
         )
-        db.commit()
-        logger.info("人工续跑执行成功", extra={"extra_fields": {"event": "manual_continue", "status": "success", "workflow_run_id": run.id}})
-        return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="工作流已人工续跑", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        try:
+            run = workflow_run_service.manual_continue(
+                db=db,
+                workflow_run_id=request.workflow_run_id,
+                continued_by=request.continued_by,
+                reason=request.reason,
+                continue_from_step=request.continue_from_step,
+                notes=request.notes,
+            )
+            db.commit()
+            scope.success("已从人工节点恢复执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
+            return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="工作流已人工续跑", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
+        except Exception as exc:
+            scope.failure("人工续跑执行失败", exc, workflow_run_id=request.workflow_run_id)
+            raise
 
     def _get_goal_for_execution(self, db: Session, request: ExecuteChapterCycleRequest) -> ChapterGoal:
         if request.chapter_goal_id:
@@ -766,7 +777,13 @@ class WorkflowService:
 
     def execute_chapter_cycle(self, db: Session, request: ExecuteChapterCycleRequest) -> dict:
         set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_service", event="execute_chapter_cycle", status="started")
-        logger.info("开始执行单章主链")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="workflow_service",
+            event="execute_chapter_cycle",
+            message_started="开始执行单章工作流",
+            start_fields={"project_id": request.project_id, "chapter_no": request.chapter_no, "workflow_run_id": request.workflow_run_id},
+        )
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
@@ -866,6 +883,7 @@ class WorkflowService:
             result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
             result.stage_status = "attention_required"
             result.next_action = "select_blueprint"
+            scope.success("连续章节工作流暂停，等待人工选择蓝图", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step="blueprint_selection_required", next_action="select_blueprint", candidate_count=len(blueprints), candidate_blueprint_ids=truncate_ids([item.id for item in blueprints]))
             return result.model_dump(mode="json")
 
         scenes = self._list_scenes(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id)
@@ -1119,7 +1137,7 @@ class WorkflowService:
             result.run = WorkflowRun.model_validate(run)
             result.stage_status = "completed"
             result.next_action = None
-            logger.info("单章主链执行完成", extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "success", "workflow_run_id": run.id}})
+            scope.success("单章工作流执行完成", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step="published", next_action=None, changeset_id=getattr(changeset, "id", None), published_chapter_id=(result.publish_result.published_chapter.id if result.publish_result is not None else None))
             return result.model_dump(mode="json")
 
         result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
@@ -1138,13 +1156,19 @@ class WorkflowService:
         else:
             result.stage_status = "draft_ready"
             result.next_action = "run_gates"
-        logger.info("单章主链执行完成（需人工或下一步动作）", extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "success", "workflow_run_id": run.id, "summary": f"next_action={result.next_action}"}})
+        scope.success("单章工作流执行完成（待下一步动作）", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step=getattr(result.run, "current_step", None), next_action=result.next_action, stop_reason=result.stage_status)
         return result.model_dump(mode="json")
 
 
     def execute_chapter_sequence(self, db: Session, request: ExecuteChapterSequenceRequest) -> dict:
         set_log_context(project_id=request.project_id, chapter_no=request.start_chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_service", event="execute_chapter_sequence", status="started")
-        logger.info("开始执行连续章节主链")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="workflow_service",
+            event="execute_chapter_sequence",
+            message_started="开始执行连续章节工作流",
+            start_fields={"project_id": request.project_id, "chapter_no": request.start_chapter_no, "workflow_run_id": request.workflow_run_id},
+        )
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
@@ -1320,6 +1344,7 @@ class WorkflowService:
                 )
                 self._log_sequence_event(db=db, run=sequence_run, event_type="workflow_run_sequence_stopped", payload={"chapter_no": chapter_no, "stop_reason": stop_reason, "next_action": next_action})
                 db.commit()
+                scope.success("连续章节工作流因失败停止", workflow_run_id=sequence_run.id, chapter_no=chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=f"chapter_{chapter_no}_failed")
                 break
 
             if item.stage_status == "attention_required" and request.stop_on_attention:
@@ -1336,6 +1361,7 @@ class WorkflowService:
                 )
                 self._log_sequence_event(db=db, run=sequence_run, event_type="workflow_run_sequence_stopped", payload={"chapter_no": chapter_no, "stop_reason": stop_reason, "next_action": next_action})
                 db.commit()
+                scope.success("连续章节工作流暂停，等待人工处理", workflow_run_id=sequence_run.id, chapter_no=chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=f"chapter_{chapter_no}_attention_required")
                 break
 
             if request.advance_only_on_completed and item.stage_status != "completed":
@@ -1352,6 +1378,7 @@ class WorkflowService:
                 )
                 self._log_sequence_event(db=db, run=sequence_run, event_type="workflow_run_sequence_stopped", payload={"chapter_no": chapter_no, "stop_reason": stop_reason, "next_action": next_action})
                 db.commit()
+                scope.success("连续章节工作流暂停，等待当前章完成", workflow_run_id=sequence_run.id, chapter_no=chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=f"chapter_{chapter_no}_not_completed")
                 break
 
         sequence_run = db.get(WorkflowRunORM, sequence_run.id) or sequence_run
@@ -1390,7 +1417,7 @@ class WorkflowService:
             attention_chapter_count=sum(1 for item in chapter_results if item.stage_status == "attention_required"),
             chapter_results=chapter_results,
         ).model_dump(mode="json")
-        logger.info("连续章节执行结束", extra={"extra_fields": {"event": "execute_chapter_sequence", "status": "success", "workflow_run_id": final_run.id, "summary": f"processed={len(chapter_results)}"}})
+        scope.success("连续章节工作流执行完成", workflow_run_id=final_run.id, chapter_no=request.start_chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=final_run.current_step, summary=f"processed={len(chapter_results)}")
         return result
 
 

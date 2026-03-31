@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.business_logging import StepLogScope
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
@@ -49,6 +50,13 @@ class ChangeSetService:
     _REQUIRED_PROPOSAL_GATES = [GateName.SCHEMA.value, GateName.CANON.value, GateName.NARRATIVE.value]
 
     def generate_proposal(self, db: Session, request: GenerateChangeSetProposalRequest) -> ChangeSetProposal:
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="changeset_service",
+            event="changeset.proposal.generate",
+            message_started="开始生成 ChangeSet 提议",
+            start_fields={"project_id": request.project_id, "draft_id": request.draft_id},
+        )
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法生成 ChangeSet 提议")
@@ -210,6 +218,7 @@ class ChangeSetService:
             )
         else:
             db.commit()
+        scope.success("ChangeSet 已提议", project_id=request.project_id, workflow_run_id=run.id, draft_id=draft.id, blueprint_id=blueprint.id, candidate_count=len(proposal.patch_operations))
         return proposal
 
     def propose(self, db: Session, request: ProposeChangeSetRequest) -> ChangeSet:

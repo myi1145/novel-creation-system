@@ -197,6 +197,11 @@ python -m unittest tests/test_chapter_goal_api.py
 - `trace_id`
 - `changeset_id`
 
+### 8.3 日志排障
+
+- 请求级与业务步骤级日志说明见：`docs/logging.md`
+- 默认日志文件：`logs/app.log`
+
 ---
 
 ## 9. 文档阅读顺序（修改代码前必读）

@@ -1,40 +1,71 @@
-# 日志系统说明（最小可用版）
+# 日志排障说明（最小可用版）
 
-## 目标
-- 优先支撑 workflow / sequence / agent / changeset / publish 排障。
-- 保持最小改动，不重写现有响应与服务架构。
+## 1) 当前日志类别
 
-## 结构
-- `app/core/logging.py`：JSON 日志格式、控制台 + 滚动文件输出、脱敏与摘要。
-- `app/core/logging_context.py`：`contextvars` 上下文注入。
-- `app/middleware/request_logging.py`：请求日志中间件，注入 `request_id` 并写入响应头。
+- **请求日志**：`RequestLoggingMiddleware` 记录请求开始/完成/失败（method、path、status_code、duration）。
+- **业务过程日志**：章节工作流主链关键步骤的开始/成功/失败日志，覆盖：
+  - `execute_chapter_cycle`
+  - `execute_chapter_sequence`
+  - `create_goal / generate_blueprints / select_blueprint / decompose_scenes / generate_draft`
+  - `changeset proposal generate`
+  - `agent_gateway invoke`
+  - `summary.generate / derived_updates.run`
+  - `manual_continue`
+- **异常日志**：统一异常处理器输出中文错误摘要（含唯一约束冲突、非法恢复执行等高频场景）。
 
-## 日志分类
-- `app`：应用与请求入口。
-- `workflow`：章节主链、Gate、ChangeSet、Publish、Summary、Derived updates。
-- `agent`：Agent Gateway 调用。
-- `error`：异常处理器。
+## 2) 排查主索引字段
 
-## 关键字段
-- `request_id`
-- `trace_id`
-- `workflow_run_id`
-- `project_id`
-- `chapter_no`
-- `module`
-- `event`
-- `status`
+按以下顺序定位最稳妥：
 
-## 脱敏策略
-- 自动屏蔽 `api_key/token/password/secret/authorization` 等键。
-- 超长字符串截断（默认 300 字符）。
-- 列表/数组仅保留前若干项并追加 `...` 摘要。
+1. `request_id`：先锁定一次 API 请求。
+2. `trace_id`：跨服务串联一次工作流链路。
+3. `workflow_run_id`：查看单次 workflow 的全部关键步骤。
+4. `project_id + chapter_no`：按章节定位问题。
 
-## 查看方式
-- 控制台实时日志。
-- 本地文件：`logs/app.log`（5MB * 5 滚动）。
+建议组合查询：
+- `workflow_run_id=xxx and event=execute_chapter_cycle`
+- `project_id=xxx and chapter_no=1 and status=failed`
 
-## 请求日志
-- 中间件读取 `X-Request-ID`，若无则自动生成。
-- 响应头回写 `X-Request-ID`。
-- 记录字段：`method/path/status_code/duration_ms/client_ip/request_id`。
+## 3) 章节过程日志主要函数
+
+- `app/services/workflow_service.py`
+  - `execute_chapter_cycle`
+  - `execute_chapter_sequence`
+  - `manual_continue_workflow_run`
+- `app/services/chapter_service.py`
+  - `create_goal`
+  - `generate_blueprints`
+  - `select_blueprint`
+  - `decompose_scenes`
+  - `generate_draft`
+  - `generate_published_chapter_summary`
+  - `run_post_publish_updates`
+- `app/services/changeset_service.py`
+  - `generate_proposal`
+- `app/services/agent_gateway.py`
+  - `_invoke`
+
+## 4) 摘要记录与脱敏策略
+
+只记录业务摘要，不记录敏感全文：
+
+- 记录：`chapter_no / workflow_run_id / trace_id / candidate_count / scene_count / draft_length / provider / model / fallback_used / latency_ms / next_action / stop_reason`。
+- 不记录：API Key、完整 prompt、完整 agent 输入输出、正文全文。
+- ID 列表（如 candidate 蓝图）会截断记录，避免过长日志与敏感泄露。
+
+## 5) 本地查看日志
+
+默认日志文件：`logs/app.log`
+
+常用命令：
+
+```bash
+# 查看最近日志
+tail -n 200 logs/app.log
+
+# 追踪单个 workflow
+grep '"workflow_run_id":"<your_run_id>"' logs/app.log
+
+# 查看失败日志
+grep '"status":"failed"' logs/app.log
+```
