@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.business_logging import StepLogScope
 from app.core.exceptions import NotFoundError
-from app.core.logging_context import set_log_context
 from app.db.session import get_db
 from app.schemas.workflow import (
     ExecuteChapterCycleRequest,
@@ -29,42 +27,16 @@ def get_chapter_cycle_status(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/chapter-cycle/execute")
 def execute_chapter_cycle(request: ExecuteChapterCycleRequest, db: Session = Depends(get_db)) -> dict:
-    set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_router", event="execute_chapter_cycle", status="started")
-    scope = StepLogScope(
-        logger_name="workflow",
-        module="workflow_router",
-        event="execute_chapter_cycle",
-        message_started="开始执行单章工作流",
-        start_fields={"project_id": request.project_id, "chapter_no": request.chapter_no, "workflow_run_id": request.workflow_run_id},
-    )
-    try:
-        data = workflow_service.execute_chapter_cycle(db=db, request=request)
-        scope.success("单章工作流执行完成", workflow_run_id=data.get("run", {}).get("id"), chapter_no=request.chapter_no, current_step=data.get("run", {}).get("current_step"), next_action=data.get("next_action"))
-        return success_response(data=data, message="单章主链执行完成")
-    except Exception as exc:
-        scope.failure("单章工作流执行失败", exc, workflow_run_id=request.workflow_run_id, chapter_no=request.chapter_no)
-        raise
+    data = workflow_service.execute_chapter_cycle(db=db, request=request)
+    return success_response(data=data, message="单章主链执行完成")
 
 
 
 
 @router.post("/chapter-sequence/execute")
 def execute_chapter_sequence(request: ExecuteChapterSequenceRequest, db: Session = Depends(get_db)) -> dict:
-    set_log_context(project_id=request.project_id, chapter_no=request.start_chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_router", event="execute_chapter_sequence", status="started")
-    scope = StepLogScope(
-        logger_name="workflow",
-        module="workflow_router",
-        event="execute_chapter_sequence",
-        message_started="开始执行连续章节工作流",
-        start_fields={"project_id": request.project_id, "chapter_no": request.start_chapter_no, "workflow_run_id": request.workflow_run_id},
-    )
-    try:
-        data = workflow_service.execute_chapter_sequence(db=db, request=request)
-        scope.success("连续章节工作流执行完成", workflow_run_id=data.get("run", {}).get("id"), chapter_no=request.start_chapter_no, stop_reason=data.get("stop_reason"), next_action=data.get("next_action"))
-        return success_response(data=data, message="连续章节执行完成")
-    except Exception as exc:
-        scope.failure("连续章节工作流执行失败", exc, workflow_run_id=request.workflow_run_id, chapter_no=request.start_chapter_no)
-        raise
+    data = workflow_service.execute_chapter_sequence(db=db, request=request)
+    return success_response(data=data, message="连续章节执行完成")
 
 @router.get("/chapter-sequence/reports/{workflow_run_id}")
 def get_chapter_sequence_report(workflow_run_id: str, db: Session = Depends(get_db)) -> dict:

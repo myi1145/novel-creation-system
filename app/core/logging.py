@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -12,50 +11,59 @@ from app.core.logging_context import get_log_context
 _LOG_INITIALIZED = False
 
 
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "category": getattr(record, "category", "app"),
-            "message": record.getMessage(),
-        }
-        payload.update(get_log_context())
-        if hasattr(record, "extra_fields") and isinstance(record.extra_fields, dict):
-            payload.update(record.extra_fields)
-        if record.exc_info:
-            payload["error_type"] = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
-        return json.dumps(sanitize_for_logging(payload), ensure_ascii=False)
+class HumanReadableFormatter(logging.Formatter):
+    PRIORITY_KEYS = [
+        "method",
+        "path",
+        "status_code",
+        "duration_ms",
+        "request_id",
+        "trace_id",
+        "project_id",
+        "chapter_no",
+        "workflow_run_id",
+        "next_action",
+        "stop_reason",
+        "blueprint_id",
+        "changeset_id",
+        "published_chapter_id",
+    ]
 
+    def _stringify(self, value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (list, tuple)):
+            return ",".join(str(item) for item in value)
+        return str(value)
 
-class ConsoleFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        context = get_log_context()
+        combined = sanitize_for_logging(get_log_context())
         extra_fields = getattr(record, "extra_fields", {})
         if not isinstance(extra_fields, dict):
             extra_fields = {}
+        combined.update(sanitize_for_logging(extra_fields))
         timestamp = self.formatTime(record, self.datefmt)
-        method = extra_fields.get("method") or getattr(record, "method", None)
-        path = extra_fields.get("path") or getattr(record, "path", None)
-        status_code = extra_fields.get("status_code", getattr(record, "status_code", None))
-        duration_ms = extra_fields.get("duration_ms", getattr(record, "duration_ms", None))
-        request_id = extra_fields.get("request_id") or getattr(record, "request_id", None) or context.get("request_id")
-
         parts = [f"{timestamp} [{record.levelname}] {record.getMessage()}"]
-        http_parts: list[str] = []
-        if method:
-            http_parts.append(str(method))
-        if path:
-            http_parts.append(str(path))
-        if status_code is not None:
-            http_parts.append(f"status={status_code}")
-        if duration_ms is not None:
-            http_parts.append(f"duration={duration_ms}ms")
-        if http_parts:
-            parts.append(" | " + " ".join(http_parts))
-        if request_id:
-            parts.append(f" | request_id={request_id}")
+        used: set[str] = set()
+        for key in self.PRIORITY_KEYS:
+            value = combined.get(key)
+            if value is None or value == "":
+                continue
+            display = f"{key}={self._stringify(value)}"
+            if key == "duration_ms":
+                display = f"duration={self._stringify(value)}ms"
+            parts.append(f" | {display}")
+            used.add(key)
+        for key in sorted(combined.keys()):
+            if key in used or key in {"module", "event", "status"}:
+                continue
+            value = combined.get(key)
+            if value is None or value == "":
+                continue
+            parts.append(f" | {key}={self._stringify(value)}")
+        if record.exc_info:
+            error_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
+            parts.append(f" | error_type={error_type}")
         return "".join(parts)
 
 
@@ -63,7 +71,7 @@ class RuntimeLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if record.levelno >= logging.ERROR:
             return True
-        if record.name in {"novel.app", "novel.error"}:
+        if record.name in {"novel.app", "novel.error", "novel.workflow", "novel.agent"}:
             return True
         return False
 
@@ -98,8 +106,7 @@ def setup_logging(level: str = "INFO") -> None:
         return
 
     log_level = getattr(logging, level.upper(), logging.INFO)
-    json_formatter = JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z")
-    console_formatter = ConsoleFormatter(datefmt="%Y-%m-%d %H:%M:%S")
+    text_formatter = HumanReadableFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
@@ -108,14 +115,14 @@ def setup_logging(level: str = "INFO") -> None:
         root_logger.removeHandler(existing)
 
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(console_formatter)
+    stream_handler.setFormatter(text_formatter)
     stream_handler.addFilter(RuntimeLogFilter())
     root_logger.addHandler(stream_handler)
 
     log_dir = PROJECT_ROOT / "logs"
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     file_handler = RotatingFileHandler(log_dir / "app.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
-    file_handler.setFormatter(json_formatter)
+    file_handler.setFormatter(text_formatter)
     file_handler.addFilter(RuntimeLogFilter())
     root_logger.addHandler(file_handler)
 
