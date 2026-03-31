@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import (
     CanonSnapshotORM,
     ChapterBlueprintORM,
@@ -39,6 +41,8 @@ from app.services.continuity_service import continuity_service
 from app.services.derived_update_service import derived_update_service
 from app.services.rulepack_service import rulepack_service
 from app.services.workflow_run_service import workflow_run_service
+
+logger = get_logger("workflow")
 
 
 
@@ -89,6 +93,8 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
 
 class ChapterService:
     def create_goal(self, db: Session, request: CreateChapterGoalRequest) -> ChapterGoal:
+        set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, module="chapter_service", event="create_goal", status="started")
+        logger.info("开始创建章节目标")
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法创建章目标")
@@ -169,9 +175,12 @@ class ChapterService:
         workflow_run_service.update_progress(db=db, run=run, current_step="chapter_goal_created", source_ref=goal.id)
         db.commit()
         db.refresh(goal)
+        logger.info("章节目标创建成功", extra={"extra_fields": {"event": "create_goal", "status": "success", "workflow_run_id": run.id}})
         return _to_goal_schema(goal)
 
     def generate_blueprints(self, db: Session, request: GenerateBlueprintsRequest) -> list[ChapterBlueprint]:
+        set_log_context(project_id=request.project_id, module="chapter_service", event="generate_blueprints", status="started")
+        logger.info("开始生成章节蓝图候选")
         goal = db.get(ChapterGoalORM, request.chapter_goal_id)
         if goal is None:
             raise NotFoundError("章目标不存在")
@@ -274,6 +283,7 @@ class ChapterService:
             )
         )
         db.commit()
+        logger.info("章节蓝图候选生成成功", extra={"extra_fields": {"event": "generate_blueprints", "status": "success", "workflow_run_id": run.id, "summary": f"共生成 {len(blueprints)} 个候选蓝图"}})
         return blueprints
 
     def list_blueprints(self, db: Session, project_id: str, chapter_goal_id: str | None = None, selected_only: bool = False) -> list[ChapterBlueprint]:
@@ -286,6 +296,8 @@ class ChapterService:
         return [_to_blueprint_schema(item) for item in items]
 
     def select_blueprint(self, db: Session, request: SelectBlueprintRequest) -> ChapterBlueprint:
+        set_log_context(project_id=request.project_id, module="chapter_service", event="select_blueprint", status="started")
+        logger.info("开始确认章节蓝图")
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None or blueprint.project_id != request.project_id:
             raise NotFoundError("候选章蓝图不存在")
@@ -354,6 +366,7 @@ class ChapterService:
         )
         db.commit()
         db.refresh(blueprint)
+        logger.info("章节蓝图确认成功", extra={"extra_fields": {"event": "select_blueprint", "status": "success", "workflow_run_id": run.id, "summary": f"blueprint_id={blueprint.id}"}})
         return _to_blueprint_schema(blueprint)
 
     def decompose_scenes(self, db: Session, request: DecomposeScenesRequest) -> list[SceneCard]:
@@ -413,6 +426,8 @@ class ChapterService:
         return [_to_scene_schema(item) for item in scene_entities]
 
     def generate_draft(self, db: Session, request: GenerateDraftRequest) -> ChapterDraft:
+        set_log_context(project_id=request.project_id, module="chapter_service", event="generate_draft", status="started")
+        logger.info("开始生成章节草稿")
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None:
             raise NotFoundError("章蓝图不存在")
@@ -565,6 +580,7 @@ class ChapterService:
         workflow_run_service.update_progress(db=db, run=run, current_step="draft_ready", source_ref=draft.id)
         db.commit()
         db.refresh(draft)
+        logger.info("章节草稿生成成功", extra={"extra_fields": {"event": "generate_draft", "status": "success", "workflow_run_id": run.id, "summary": f"draft_id={draft.id}"}})
         return _to_draft_schema(draft)
 
 

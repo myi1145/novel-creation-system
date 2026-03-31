@@ -6,6 +6,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import (
     AgentCallLogORM,
     ChapterBlueprintORM,
@@ -68,6 +70,8 @@ from app.services.gate_service import gate_service
 from app.services.provider_governance_service import provider_governance_service
 from app.services.publish_service import publish_service
 from app.services.workflow_run_service import workflow_run_service
+
+logger = get_logger("workflow")
 
 
 class WorkflowStatusResponse(BaseModel):
@@ -651,6 +655,8 @@ class WorkflowService:
         return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_takeover", message="工作流已切换到 manual_review", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def mark_human_reviewed(self, db: Session, request: MarkHumanReviewedRequest) -> dict:
+        set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="human_review.resume", status="started")
+        logger.info("开始记录人工审阅结果")
         run = workflow_run_service.mark_human_reviewed(
             db=db,
             workflow_run_id=request.workflow_run_id,
@@ -661,9 +667,12 @@ class WorkflowService:
             resume_from_step=request.resume_from_step,
         )
         db.commit()
+        logger.info("人工审阅结果记录成功", extra={"extra_fields": {"event": "human_review.resume", "status": "success", "workflow_run_id": run.id}})
         return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="人工审阅结果已记录", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def manual_continue_workflow_run(self, db: Session, request: ManualContinueWorkflowRunRequest) -> dict:
+        set_log_context(workflow_run_id=request.workflow_run_id, module="workflow_service", event="manual_continue", status="started")
+        logger.info("开始人工续跑工作流")
         run = workflow_run_service.manual_continue(
             db=db,
             workflow_run_id=request.workflow_run_id,
@@ -673,6 +682,7 @@ class WorkflowService:
             notes=request.notes,
         )
         db.commit()
+        logger.info("人工续跑执行成功", extra={"extra_fields": {"event": "manual_continue", "status": "success", "workflow_run_id": run.id}})
         return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="工作流已人工续跑", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
 
     def _get_goal_for_execution(self, db: Session, request: ExecuteChapterCycleRequest) -> ChapterGoal:
@@ -755,6 +765,8 @@ class WorkflowService:
         return [GateReviewResult.model_validate(row) for row in rows]
 
     def execute_chapter_cycle(self, db: Session, request: ExecuteChapterCycleRequest) -> dict:
+        set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_service", event="execute_chapter_cycle", status="started")
+        logger.info("开始执行单章主链")
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
@@ -1107,6 +1119,7 @@ class WorkflowService:
             result.run = WorkflowRun.model_validate(run)
             result.stage_status = "completed"
             result.next_action = None
+            logger.info("单章主链执行完成", extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "success", "workflow_run_id": run.id}})
             return result.model_dump(mode="json")
 
         result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
@@ -1125,10 +1138,13 @@ class WorkflowService:
         else:
             result.stage_status = "draft_ready"
             result.next_action = "run_gates"
+        logger.info("单章主链执行完成（需人工或下一步动作）", extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "success", "workflow_run_id": run.id, "summary": f"next_action={result.next_action}"}})
         return result.model_dump(mode="json")
 
 
     def execute_chapter_sequence(self, db: Session, request: ExecuteChapterSequenceRequest) -> dict:
+        set_log_context(project_id=request.project_id, chapter_no=request.start_chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_service", event="execute_chapter_sequence", status="started")
+        logger.info("开始执行连续章节主链")
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
@@ -1363,7 +1379,7 @@ class WorkflowService:
             db.commit()
 
         final_run = db.get(WorkflowRunORM, sequence_run.id) or sequence_run
-        return ExecuteChapterSequenceResult(
+        result = ExecuteChapterSequenceResult(
             run=WorkflowRun.model_validate(final_run),
             stage_status=final_status,
             next_action=next_action,
@@ -1374,6 +1390,8 @@ class WorkflowService:
             attention_chapter_count=sum(1 for item in chapter_results if item.stage_status == "attention_required"),
             chapter_results=chapter_results,
         ).model_dump(mode="json")
+        logger.info("连续章节执行结束", extra={"extra_fields": {"event": "execute_chapter_sequence", "status": "success", "workflow_run_id": final_run.id, "summary": f"processed={len(chapter_results)}"}})
+        return result
 
 
 workflow_service = WorkflowService()

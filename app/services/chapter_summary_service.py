@@ -6,11 +6,14 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import CanonSnapshotORM, ChapterBlueprintORM, ChapterGoalORM, ProjectORM, PublishedChapterORM, ImmutableLogORM, WorkflowRunORM
 from app.schemas.chapter import ChapterSummary, GenerateChapterSummaryRequest
 from app.services.agent_gateway import agent_gateway
 from app.services.workflow_run_service import workflow_run_service
 
+logger = get_logger("workflow")
 
 class ChapterSummaryService:
     def _build_fallback(self, *, project_id: str, published: PublishedChapterORM, blueprint: ChapterBlueprintORM, goal: ChapterGoalORM, workflow_run_id: str | None, trace_id: str | None, open_loops: list[str]) -> ChapterSummary:
@@ -45,6 +48,8 @@ class ChapterSummaryService:
         db.flush()
 
     def generate_for_published(self, db: Session, request: GenerateChapterSummaryRequest, *, commit: bool = True) -> ChapterSummary:
+        set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="chapter_summary_service", event="summary.generate", status="started")
+        logger.info("开始生成章节摘要")
         published = db.get(PublishedChapterORM, request.published_chapter_id)
         if published is None or published.project_id != request.project_id:
             raise NotFoundError("已发布章节不存在")
@@ -148,6 +153,7 @@ class ChapterSummaryService:
             db.refresh(published)
         else:
             db.flush()
+        logger.info("章节摘要生成完成", extra={"extra_fields": {"event": "summary.generate", "status": "success", "workflow_run_id": run.id, "summary": summary.summary}})
         return summary
 
     def get_published_summary(self, db: Session, *, project_id: str, published_chapter_id: str, force_regenerate: bool = False) -> ChapterSummary:

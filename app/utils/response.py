@@ -9,11 +9,12 @@ def success_response(data: Any = None, message: str = "success") -> dict:
     }
 
 
-def error_response(code: str, message: str) -> dict:
+def error_response(code: str, message: str, details: dict | None = None) -> dict:
     return {
         "success": False,
         "error": {
             "code": code,
             "message": message,
+            "details": details or {},
         },
     }
