@@ -657,10 +657,10 @@ class WorkflowService:
                 notes=request.notes,
             )
             db.commit()
-            scope.success("工作流已从人工节点恢复执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
+            scope.success("已从人工节点恢复执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
             return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="resume", message="工作流已恢复", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
         except Exception as exc:
-            scope.failure("恢复工作流执行失败", exc, workflow_run_id=request.workflow_run_id)
+            scope.failure(f"恢复工作流执行失败：{exc}", exc, workflow_run_id=request.workflow_run_id)
             raise
 
     def request_manual_takeover(self, db: Session, request: ManualTakeoverRequest) -> dict:
@@ -695,10 +695,10 @@ class WorkflowService:
                 resume_from_step=request.resume_from_step,
             )
             db.commit()
-            scope.success("人工审阅结果记录成功", workflow_run_id=run.id, current_step=run.current_step, next_action=request.next_action)
+            scope.success("人工审阅结果已记录", workflow_run_id=run.id, current_step=run.current_step, next_action=request.next_action)
             return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="mark_human_reviewed", message="人工审阅结果已记录", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
         except Exception as exc:
-            scope.failure("人工审阅结果记录失败", exc, workflow_run_id=request.workflow_run_id)
+            scope.failure(f"人工审阅结果记录失败：{exc}", exc, workflow_run_id=request.workflow_run_id)
             raise
 
     def manual_continue_workflow_run(self, db: Session, request: ManualContinueWorkflowRunRequest) -> dict:
@@ -720,10 +720,10 @@ class WorkflowService:
                 notes=request.notes,
             )
             db.commit()
-            scope.success("已从人工节点恢复执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
+            scope.success("已从人工节点继续执行", workflow_run_id=run.id, current_step=run.current_step, next_action="resume_workflow")
             return WorkflowRunControlResult(run=WorkflowRun.model_validate(run), control_action="manual_continue", message="工作流已人工续跑", generated_at=datetime.now(timezone.utc)).model_dump(mode="json")
         except Exception as exc:
-            scope.failure("人工续跑执行失败", exc, workflow_run_id=request.workflow_run_id)
+            scope.failure(f"人工续跑执行失败：{exc}", exc, workflow_run_id=request.workflow_run_id)
             raise
 
     def _get_goal_for_execution(self, db: Session, request: ExecuteChapterCycleRequest) -> ChapterGoal:
@@ -825,7 +825,7 @@ class WorkflowService:
             logger_name="workflow",
             module="workflow_service",
             event="execute_chapter_cycle",
-            message_started="开始执行单章工作流",
+            message_started="开始执行章节循环工作流",
             start_fields={"project_id": request.project_id, "chapter_no": request.chapter_no, "workflow_run_id": request.workflow_run_id},
         )
         project = db.get(ProjectORM, request.project_id)
@@ -931,7 +931,7 @@ class WorkflowService:
             result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
             result.stage_status = "attention_required"
             result.next_action = "select_blueprint"
-            scope.success("连续章节工作流暂停，等待人工选择蓝图", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step="blueprint_selection_required", next_action="select_blueprint", candidate_count=len(blueprints), candidate_blueprint_ids=truncate_ids([item.id for item in blueprints]))
+            scope.success(f"第 {goal.chapter_no} 章工作流暂停，下一步=select_blueprint", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step="blueprint_selection_required", next_action="select_blueprint", candidate_count=len(blueprints), candidate_blueprint_ids=truncate_ids([item.id for item in blueprints]), stop_reason="blueprint_selection_required")
             return result.model_dump(mode="json")
 
         scenes = self._list_scenes(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id)

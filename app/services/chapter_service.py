@@ -100,7 +100,7 @@ class ChapterService:
             logger_name="workflow",
             module="chapter_service",
             event="create_goal",
-            message_started="开始创建章节目标",
+            message_started=f"开始创建第 {request.chapter_no} 章章节目标",
             start_fields={"project_id": request.project_id, "chapter_no": request.chapter_no},
         )
         project = db.get(ProjectORM, request.project_id)
@@ -208,7 +208,7 @@ class ChapterService:
         workflow_run_service.update_progress(db=db, run=run, current_step="chapter_goal_created", source_ref=goal.id)
         db.commit()
         db.refresh(goal)
-        scope.success("第 1 章章目标创建完成" if request.chapter_no == 1 else f"第 {request.chapter_no} 章章目标创建完成", workflow_run_id=run.id, chapter_goal_id=goal.id, project_id=request.project_id, chapter_no=request.chapter_no)
+        scope.success(f"第 {request.chapter_no} 章章节目标创建完成", workflow_run_id=run.id, chapter_goal_id=goal.id, project_id=request.project_id, chapter_no=request.chapter_no)
         return _to_goal_schema(goal)
 
     def generate_blueprints(self, db: Session, request: GenerateBlueprintsRequest) -> list[ChapterBlueprint]:
@@ -428,6 +428,7 @@ class ChapterService:
         return _to_blueprint_schema(blueprint)
 
     def decompose_scenes(self, db: Session, request: DecomposeScenesRequest) -> list[SceneCard]:
+        set_log_context(project_id=request.project_id, module="chapter_service", event="decompose_scenes", status="started")
         scope = StepLogScope(
             logger_name="workflow",
             module="chapter_service",
@@ -488,7 +489,8 @@ class ChapterService:
         db.commit()
         for entity in scene_entities:
             db.refresh(entity)
-        scope.success("场景拆解完成", workflow_run_id=run.id, project_id=request.project_id, blueprint_id=blueprint.id, scene_count=len(scene_entities))
+        chapter_no = db.get(ChapterGoalORM, blueprint.chapter_goal_id).chapter_no if blueprint.chapter_goal_id else None
+        scope.success("场景拆解完成", workflow_run_id=run.id, project_id=request.project_id, blueprint_id=blueprint.id, chapter_no=chapter_no, scene_count=len(scene_entities))
         return [_to_scene_schema(item) for item in scene_entities]
 
     def generate_draft(self, db: Session, request: GenerateDraftRequest) -> ChapterDraft:
@@ -653,7 +655,7 @@ class ChapterService:
         db.commit()
         db.refresh(draft)
         scope.success(
-            "章节正文草稿生成完成",
+            f"第 {goal.chapter_no if goal is not None else '?'} 章正文草稿生成完成",
             workflow_run_id=run.id,
             blueprint_id=blueprint.id,
             draft_id=draft.id,
