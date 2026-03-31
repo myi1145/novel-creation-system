@@ -188,7 +188,7 @@ class WorkflowRunService:
     ) -> WorkflowRunORM:
         run = self._get_run_or_raise(db=db, workflow_run_id=workflow_run_id)
         if run.status != "paused":
-            raise ConflictError("只有 paused 状态的工作流才能执行 resume")
+            raise ConflictError(f"当前运行不是可恢复状态（status={run.status}），仅 paused 状态允许 resume")
         previous_status = run.status
         if resume_from_step:
             run.current_step = resume_from_step
@@ -257,7 +257,7 @@ class WorkflowRunService:
         run = self._get_run_or_raise(db=db, workflow_run_id=workflow_run_id)
         previous_status = run.status
         if previous_status not in {"manual_review", "attention_required", "failed", "paused"}:
-            raise ConflictError("当前工作流状态不适合执行人工审阅确认")
+            raise ConflictError(f"当前步骤状态不允许执行人工审阅确认（status={previous_status}）")
         if resume_from_step:
             run.current_step = resume_from_step
         metadata = dict(run.run_metadata or {})
@@ -290,7 +290,7 @@ class WorkflowRunService:
         run = self._get_run_or_raise(db=db, workflow_run_id=workflow_run_id)
         previous_status = run.status
         if previous_status not in {"attention_required", "failed", "manual_review"}:
-            raise ConflictError("只有 attention_required / failed / manual_review 状态的工作流才能手动续跑")
+            raise ConflictError(f"当前运行不是可恢复状态（status={previous_status}），仅 attention_required / failed / manual_review 允许 manual-continue")
         if continue_from_step:
             run.current_step = continue_from_step
         metadata = dict(run.run_metadata or {})

@@ -15,7 +15,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         message = exc.message
         if exc.code == "CONFLICT":
-            if "章目标" in exc.message and ("已存在" in exc.message or "重复" in exc.message):
+            if "sequence" in exc.message or "章节序列" in exc.message:
+                message = exc.message
+            elif "不是可恢复状态" in exc.message or "不允许" in exc.message:
+                message = exc.message
+            elif "章目标" in exc.message and ("已存在" in exc.message or "重复" in exc.message):
                 message = "当前项目下该章节目标已存在，不能重复创建"
             elif "manual" in exc.message or "人工" in exc.message:
                 message = "非法恢复执行：请先完成人工审阅流程再继续"

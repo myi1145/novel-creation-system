@@ -86,6 +86,13 @@ class WorkflowStatusResponse(BaseModel):
 
 
 class WorkflowService:
+    def _get_existing_goal(self, db: Session, project_id: str, chapter_no: int) -> ChapterGoalORM | None:
+        return (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+
     def _build_recent_issues(self, db: Session, project_id: str | None = None, workflow_run_id: str | None = None, limit: int = 20) -> list[dict]:
         issues: list[dict] = []
 
@@ -706,6 +713,20 @@ class WorkflowService:
             raise ValidationError("chapter_no 不能为空")
         if not request.current_volume_goal or not request.current_volume_goal.strip():
             raise ValidationError("current_volume_goal 不能为空")
+        existing_goal = self._get_existing_goal(db=db, project_id=request.project_id, chapter_no=request.chapter_no)
+        if existing_goal is not None:
+            if request.workflow_run_id and existing_goal.workflow_run_id and existing_goal.workflow_run_id == request.workflow_run_id:
+                logger.info(
+                    "复用已存在 chapter goal",
+                    extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "idempotent", "project_id": request.project_id, "chapter_no": request.chapter_no, "chapter_goal_id": existing_goal.id, "workflow_run_id": request.workflow_run_id}},
+                )
+                return ChapterGoal.model_validate(existing_goal)
+            logger.warning(
+                "拒绝重复创建 chapter goal",
+                extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "conflict", "project_id": request.project_id, "chapter_no": request.chapter_no, "existing_goal_id": existing_goal.id, "existing_workflow_run_id": existing_goal.workflow_run_id}},
+            )
+            hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
+            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流（{hint}）")
         return chapter_service.create_goal(
             db=db,
             request=CreateChapterGoalRequest(
@@ -801,11 +822,15 @@ class WorkflowService:
         )
         if request.workflow_run_id:
             if initial_run.status == "paused":
-                raise ConflictError("工作流已暂停，请先执行 resume 再继续章节主链")
+                raise ConflictError("当前工作流已暂停，请先调用 /workflows/runs/resume 恢复后再继续执行")
             if initial_run.status == "manual_review" and (initial_run.run_metadata or {}).get("manual_review_required", True):
-                raise ConflictError("工作流处于人工接管状态，请先 mark_human_reviewed 或 manual_continue")
+                raise ConflictError("当前工作流处于人工审阅状态，请先调用 /workflows/runs/mark-human-reviewed 或 /workflows/runs/manual-continue")
+            if initial_run.status == "attention_required":
+                raise ConflictError("当前工作流停在人工节点，请先完成人工处理后调用 /workflows/runs/manual-continue 再继续执行")
+            if initial_run.status == "failed":
+                raise ConflictError("当前工作流处于失败状态，请先调用 /workflows/runs/manual-continue 后再重试执行")
             if initial_run.status == "completed":
-                raise ConflictError("当前 workflow_run 已完成；如需新一轮执行，请创建新的 workflow_run")
+                raise ConflictError("当前工作流已完成，不能继续恢复；如需新一轮执行，请创建新的 workflow_run")
         db.commit()
         goal = self._get_goal_for_execution(db=db, request=request)
         run_id = goal.workflow_run_id or initial_run.id
@@ -877,7 +902,7 @@ class WorkflowService:
                 run=run,
                 current_step="blueprint_selection_required",
                 reason="候选章蓝图已生成，等待人工确认正式蓝图",
-                extra_metadata={"chapter_goal_id": goal.id, "candidate_blueprint_ids": [item.id for item in blueprints]},
+                extra_metadata={"chapter_goal_id": goal.id, "candidate_blueprint_ids": [item.id for item in blueprints], "next_action": "select_blueprint", "stop_reason": "blueprint_selection_required"},
             )
             db.commit()
             result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
@@ -1172,6 +1197,15 @@ class WorkflowService:
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
+        if request.workflow_run_id is None:
+            existing_goal = self._get_existing_goal(db=db, project_id=request.project_id, chapter_no=request.start_chapter_no)
+            if existing_goal is not None:
+                logger.warning(
+                    "拒绝重复启动 sequence：起始章节目标已存在",
+                    extra={"extra_fields": {"event": "execute_chapter_sequence", "status": "conflict", "project_id": request.project_id, "chapter_no": request.start_chapter_no, "existing_goal_id": existing_goal.id, "existing_workflow_run_id": existing_goal.workflow_run_id}},
+                )
+                hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
+                raise ConflictError(f"当前项目下第 {request.start_chapter_no} 章目标已存在，请不要重复执行 sequence；如需继续，请恢复已有工作流（{hint}）")
         sequence_run = workflow_run_service.ensure_run(
             db=db,
             project_id=request.project_id,
@@ -1193,11 +1227,15 @@ class WorkflowService:
         )
         if request.workflow_run_id:
             if sequence_run.status == "paused":
-                raise ConflictError("章节序列工作流已暂停，请先 resume")
+                raise ConflictError("当前章节序列工作流已暂停，请先调用 /workflows/runs/resume 恢复")
             if sequence_run.status == "manual_review" and (sequence_run.run_metadata or {}).get("manual_review_required", True):
-                raise ConflictError("章节序列工作流处于人工接管状态，请先 mark_human_reviewed 或 manual_continue")
+                raise ConflictError("当前章节序列工作流处于人工审阅状态，请先调用 /workflows/runs/mark-human-reviewed 或 /workflows/runs/manual-continue")
+            if sequence_run.status == "attention_required":
+                raise ConflictError("当前章节序列工作流停在人工节点，请先完成蓝图选择后调用 /workflows/runs/manual-continue")
+            if sequence_run.status == "failed":
+                raise ConflictError("当前章节序列工作流处于失败状态，请先调用 /workflows/runs/manual-continue 再继续执行")
             if sequence_run.status == "completed":
-                raise ConflictError("当前章节序列 workflow_run 已完成；如需新一轮执行，请创建新的 workflow_run")
+                raise ConflictError("当前章节序列工作流已完成，不能继续恢复；如需新一轮执行，请创建新的 workflow_run")
         workflow_run_service.update_progress(
             db=db,
             run=sequence_run,
