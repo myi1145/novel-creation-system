@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.business_logging import StepLogScope, truncate_ids
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -105,6 +106,27 @@ class ChapterService:
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法创建章目标")
+        existing_goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == request.project_id, ChapterGoalORM.chapter_no == request.chapter_no)
+            .first()
+        )
+        if existing_goal is not None:
+            logger.warning(
+                "拒绝重复创建 chapter goal",
+                extra={
+                    "extra_fields": {
+                        "event": "create_goal",
+                        "status": "conflict",
+                        "project_id": request.project_id,
+                        "chapter_no": request.chapter_no,
+                        "existing_goal_id": existing_goal.id,
+                        "existing_workflow_run_id": existing_goal.workflow_run_id,
+                    }
+                },
+            )
+            hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
+            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流（{hint}）")
         continuity_pack = continuity_service.resolve_pack(
             db=db,
             request=ResolveContinuityPackRequest(
@@ -177,7 +199,11 @@ class ChapterService:
             banned_elements=genre_banned_elements[:8],
         )
         db.add(goal)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流")
         project.current_chapter_no = max(project.current_chapter_no, request.chapter_no)
         workflow_run_service.update_progress(db=db, run=run, current_step="chapter_goal_created", source_ref=goal.id)
         db.commit()
