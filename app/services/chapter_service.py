@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.core.business_logging import StepLogScope, truncate_ids
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
@@ -94,7 +95,13 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
 class ChapterService:
     def create_goal(self, db: Session, request: CreateChapterGoalRequest) -> ChapterGoal:
         set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, module="chapter_service", event="create_goal", status="started")
-        logger.info("开始创建章节目标")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="create_goal",
+            message_started="开始创建章节目标",
+            start_fields={"project_id": request.project_id, "chapter_no": request.chapter_no},
+        )
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法创建章目标")
@@ -175,12 +182,18 @@ class ChapterService:
         workflow_run_service.update_progress(db=db, run=run, current_step="chapter_goal_created", source_ref=goal.id)
         db.commit()
         db.refresh(goal)
-        logger.info("章节目标创建成功", extra={"extra_fields": {"event": "create_goal", "status": "success", "workflow_run_id": run.id}})
+        scope.success("第 1 章章目标创建完成" if request.chapter_no == 1 else f"第 {request.chapter_no} 章章目标创建完成", workflow_run_id=run.id, chapter_goal_id=goal.id, project_id=request.project_id, chapter_no=request.chapter_no)
         return _to_goal_schema(goal)
 
     def generate_blueprints(self, db: Session, request: GenerateBlueprintsRequest) -> list[ChapterBlueprint]:
         set_log_context(project_id=request.project_id, module="chapter_service", event="generate_blueprints", status="started")
-        logger.info("开始生成章节蓝图候选")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="generate_blueprints",
+            message_started="开始生成章节蓝图候选",
+            start_fields={"project_id": request.project_id, "chapter_goal_id": request.chapter_goal_id, "candidate_count": request.candidate_count},
+        )
         goal = db.get(ChapterGoalORM, request.chapter_goal_id)
         if goal is None:
             raise NotFoundError("章目标不存在")
@@ -283,7 +296,14 @@ class ChapterService:
             )
         )
         db.commit()
-        logger.info("章节蓝图候选生成成功", extra={"extra_fields": {"event": "generate_blueprints", "status": "success", "workflow_run_id": run.id, "summary": f"共生成 {len(blueprints)} 个候选蓝图"}})
+        scope.success(
+            f"第 {goal.chapter_no} 章已生成 {len(blueprints)} 个候选蓝图，等待人工选择正式蓝图",
+            workflow_run_id=run.id,
+            chapter_no=goal.chapter_no,
+            chapter_goal_id=request.chapter_goal_id,
+            candidate_count=len(blueprints),
+            candidate_blueprint_ids=truncate_ids([item.id for item in blueprints]),
+        )
         return blueprints
 
     def list_blueprints(self, db: Session, project_id: str, chapter_goal_id: str | None = None, selected_only: bool = False) -> list[ChapterBlueprint]:
@@ -297,7 +317,13 @@ class ChapterService:
 
     def select_blueprint(self, db: Session, request: SelectBlueprintRequest) -> ChapterBlueprint:
         set_log_context(project_id=request.project_id, module="chapter_service", event="select_blueprint", status="started")
-        logger.info("开始确认章节蓝图")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="select_blueprint",
+            message_started="开始确认章节蓝图",
+            start_fields={"project_id": request.project_id, "blueprint_id": request.blueprint_id},
+        )
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None or blueprint.project_id != request.project_id:
             raise NotFoundError("候选章蓝图不存在")
@@ -366,10 +392,23 @@ class ChapterService:
         )
         db.commit()
         db.refresh(blueprint)
-        logger.info("章节蓝图确认成功", extra={"extra_fields": {"event": "select_blueprint", "status": "success", "workflow_run_id": run.id, "summary": f"blueprint_id={blueprint.id}"}})
+        scope.success(
+            f"第 {goal.chapter_no} 章已选定正式蓝图",
+            workflow_run_id=run.id,
+            chapter_no=goal.chapter_no,
+            blueprint_id=blueprint.id,
+            selected_blueprint_id=blueprint.id,
+        )
         return _to_blueprint_schema(blueprint)
 
     def decompose_scenes(self, db: Session, request: DecomposeScenesRequest) -> list[SceneCard]:
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="decompose_scenes",
+            message_started="开始执行场景拆解",
+            start_fields={"project_id": request.project_id, "blueprint_id": request.blueprint_id},
+        )
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None:
             raise NotFoundError("章蓝图不存在")
@@ -423,11 +462,18 @@ class ChapterService:
         db.commit()
         for entity in scene_entities:
             db.refresh(entity)
+        scope.success("场景拆解完成", workflow_run_id=run.id, project_id=request.project_id, blueprint_id=blueprint.id, scene_count=len(scene_entities))
         return [_to_scene_schema(item) for item in scene_entities]
 
     def generate_draft(self, db: Session, request: GenerateDraftRequest) -> ChapterDraft:
         set_log_context(project_id=request.project_id, module="chapter_service", event="generate_draft", status="started")
-        logger.info("开始生成章节草稿")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="generate_draft",
+            message_started="开始生成章节草稿",
+            start_fields={"project_id": request.project_id, "blueprint_id": request.blueprint_id},
+        )
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None:
             raise NotFoundError("章蓝图不存在")
@@ -580,7 +626,17 @@ class ChapterService:
         workflow_run_service.update_progress(db=db, run=run, current_step="draft_ready", source_ref=draft.id)
         db.commit()
         db.refresh(draft)
-        logger.info("章节草稿生成成功", extra={"extra_fields": {"event": "generate_draft", "status": "success", "workflow_run_id": run.id, "summary": f"draft_id={draft.id}"}})
+        scope.success(
+            "章节正文草稿生成完成",
+            workflow_run_id=run.id,
+            blueprint_id=blueprint.id,
+            draft_id=draft.id,
+            draft_length=len(draft.content or ""),
+            provider=result.active_provider,
+            model=result.model,
+            fallback_used=result.fallback_used,
+            latency_ms=result.latency_ms,
+        )
         return _to_draft_schema(draft)
 
 
@@ -800,7 +856,16 @@ class ChapterService:
         return [_to_publish_record_schema(item) for item in items]
 
     def generate_published_chapter_summary(self, db: Session, request: GenerateChapterSummaryRequest):
-        return chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="summary.generate",
+            message_started="开始生成章节摘要",
+            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
+        )
+        summary = chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
+        scope.success("章节摘要生成完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id)
+        return summary
 
     def get_published_chapter_summary(self, db: Session, project_id: str, published_chapter_id: str, force_regenerate: bool = False):
         return chapter_summary_service.get_published_summary(db=db, project_id=project_id, published_chapter_id=published_chapter_id, force_regenerate=force_regenerate)
@@ -825,7 +890,16 @@ class ChapterService:
         return chapter_state_service.list_history(db=db, draft_id=draft_id, project_id=project_id)
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest) -> DerivedUpdateBatchResult:
-        return derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="derived_updates.run",
+            message_started="开始执行发布后派生更新",
+            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
+        )
+        result = derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
+        scope.success("发布后派生更新完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id, status=result.status)
+        return result
 
     def get_post_publish_updates(self, db: Session, project_id: str, published_chapter_id: str) -> DerivedUpdateBatchResult | None:
         return derived_update_service.get_post_publish_updates(db=db, project_id=project_id, published_chapter_id=published_chapter_id)

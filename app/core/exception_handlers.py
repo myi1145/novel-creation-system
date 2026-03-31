@@ -13,13 +13,19 @@ logger = get_logger("error")
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
+        message = exc.message
+        if exc.code == "CONFLICT":
+            if "章目标" in exc.message and ("已存在" in exc.message or "重复" in exc.message):
+                message = "当前项目下该章节目标已存在，不能重复创建"
+            elif "manual" in exc.message or "人工" in exc.message:
+                message = "非法恢复执行：请先完成人工审阅流程再继续"
         logger.warning(
             "业务请求失败",
-            extra={"extra_fields": {"event": "app_error", "status": "failed", "error_code": exc.code, "error_message": exc.message}},
+            extra={"extra_fields": {"event": "app_error", "status": "failed", "error_code": exc.code, "error_message": message}},
         )
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_response(code=exc.code, message=exc.message, details=exc.details),
+            content=error_response(code=exc.code, message=message, details=exc.details),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -36,10 +42,14 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(IntegrityError)
     async def handle_integrity_error(_: Request, exc: IntegrityError) -> JSONResponse:
+        raw = str(exc.orig) if getattr(exc, "orig", None) is not None else str(exc)
+        message = "数据冲突，请勿重复创建或提交相同记录"
+        if "unique" in raw.lower() or "duplicate" in raw.lower():
+            message = "唯一约束冲突：记录已存在，请勿重复创建"
         logger.exception("数据库约束冲突", extra={"extra_fields": {"event": "db_integrity_error", "status": "failed"}})
         return JSONResponse(
             status_code=409,
-            content=error_response(code="UNIQUE_CONSTRAINT_CONFLICT", message="数据冲突，请勿重复创建或提交相同记录", details={}),
+            content=error_response(code="UNIQUE_CONSTRAINT_CONFLICT", message=message, details={}),
         )
 
     @app.exception_handler(Exception)
