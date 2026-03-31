@@ -1,3 +1,11 @@
+"""阶段二自动化验证回归测试（中文可读版）。
+
+约束说明：
+- 保持 unittest + TestClient + create_app 风格；
+- 仅验证主链与人工节点恢复行为，不改业务逻辑；
+- 断言语义保持稳定，便于持续回归。
+"""
+
 import unittest
 from uuid import uuid4
 
@@ -10,6 +18,8 @@ from app.main import create_app
 
 
 class WorkflowAutomationValidationTest(unittest.TestCase):
+    """覆盖单章主链、连续章节人工节点、恢复执行与日志可观测性的自动化回归。"""
+
     @classmethod
     def setUpClass(cls):
         cls._original_provider = settings.agent_provider
@@ -24,6 +34,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         settings.agent_fallback_to_mock = cls._original_fallback
 
     def _create_project(self) -> str:
+        """创建隔离项目，避免不同测试之间相互污染。"""
         resp = self.client.post(
             "/api/v1/projects",
             json={
@@ -36,6 +47,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def _init_canon_snapshot(self, project_id: str) -> str:
+        """为项目初始化 Canon 快照，满足后续 gate/changeset 前置条件。"""
         resp = self.client.post(
             "/api/v1/canon/snapshots/init",
             json={
@@ -49,6 +61,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def test_single_chapter_mainline_full_automation(self):
+        """验证单章最小闭环：目标->蓝图->场景->草稿->Gate->ChangeSet->发布->摘要->派生更新。"""
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
 
@@ -159,11 +172,12 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         self.assertIn(derived["status"], ["completed", "completed_with_warnings"])
         self.assertGreaterEqual(len(derived["tasks"]), 1)
 
-        # 对 gate 输出不做全量通过断言（不同规则/题材下可能有软失败），改为断言结构和关键链路状态。
+        # 不强制 gate 全通过（不同题材/规则可能有软失败），改为验证结构与关键状态。
         self.assertTrue(all("pass_status" in item for item in gate_results))
         self.assertEqual(publish_data["published_chapter"]["changeset_id"], applied_changeset["id"])
 
     def test_sequence_should_stop_at_attention_required_with_next_action(self):
+        """验证连续章节执行会在人工选蓝图节点停住，并返回明确 next_action。"""
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
 
@@ -180,7 +194,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         body = resp.json()["data"]
 
         self.assertIn(body["stage_status"], ["attention_required", "completed"])
-        # 默认 stop_on_attention=True，当前工程联调实现应停在人工选蓝图。
+        # 默认 stop_on_attention=True，当前实现应停在人工选蓝图节点。
         self.assertEqual(body["stage_status"], "attention_required")
         self.assertEqual(body["next_action"], "select_blueprint")
         self.assertEqual(body["run"]["status"], "attention_required")
@@ -191,6 +205,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         self.assertIn("stop_reason", body)
 
     def test_resume_after_manual_blueprint_selection_should_reuse_same_run_and_goal(self):
+        """验证人工选蓝图后恢复执行：复用原 workflow_run，且不重复创建 chapter goal。"""
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
 
@@ -267,6 +282,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         self.assertEqual(run_count, 1)
 
     def test_conflict_and_illegal_resume_should_return_business_errors(self):
+        """验证冲突与非法恢复场景：返回中文业务错误，且不暴露底层唯一约束细节。"""
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
 
@@ -307,6 +323,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         self.assertIn("不是可恢复状态", illegal_resume.json()["error"]["message"])
 
     def test_logging_trace_for_sequence_started_and_success(self):
+        """验证关键链路日志可观测性：至少可捕获 started/success 过程日志。"""
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
 

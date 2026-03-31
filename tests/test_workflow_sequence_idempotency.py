@@ -1,3 +1,10 @@
+"""连续章节幂等与恢复执行回归测试（中文可读版）。
+
+说明：
+- 保留原有用例语义与断言，不改业务逻辑；
+- 重点验证 sequence 人工节点停靠、恢复执行与冲突收口。
+"""
+
 import unittest
 from uuid import uuid4
 
@@ -10,6 +17,8 @@ from app.main import create_app
 
 
 class WorkflowSequenceIdempotencyTest(unittest.TestCase):
+    """验证 sequence 执行的幂等、恢复与冲突处理行为。"""
+
     @classmethod
     def setUpClass(cls):
         cls._original_provider = settings.agent_provider
@@ -24,6 +33,7 @@ class WorkflowSequenceIdempotencyTest(unittest.TestCase):
         settings.agent_fallback_to_mock = cls._original_fallback
 
     def _create_project(self) -> str:
+        """创建测试项目，避免跨用例共享业务数据。"""
         payload = {
             "project_name": f"sequence-idempotency-{uuid4().hex[:8]}",
             "premise": "验证 sequence 恢复执行与幂等收口",
@@ -34,6 +44,7 @@ class WorkflowSequenceIdempotencyTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def test_sequence_first_run_should_stop_on_blueprint_selection(self):
+        """首次运行应停在蓝图人工选择节点。"""
         project_id = self._create_project()
         resp = self.client.post(
             "/api/v1/workflows/chapter-sequence/execute",
@@ -52,6 +63,7 @@ class WorkflowSequenceIdempotencyTest(unittest.TestCase):
         self.assertEqual(body["data"]["run"]["status"], "attention_required")
 
     def test_select_blueprint_then_continue_should_not_duplicate_goal(self):
+        """人工选蓝图并继续执行后，不应重复创建 chapter goal。"""
         project_id = self._create_project()
         sequence_resp = self.client.post(
             "/api/v1/workflows/chapter-sequence/execute",
@@ -98,6 +110,7 @@ class WorkflowSequenceIdempotencyTest(unittest.TestCase):
         self.assertEqual(goal_count, 1)
 
     def test_repeat_sequence_execute_should_return_business_conflict(self):
+        """同一 project + chapter 重复启动 sequence，应返回业务冲突。"""
         project_id = self._create_project()
         first_resp = self.client.post(
             "/api/v1/workflows/chapter-sequence/execute",
@@ -126,6 +139,7 @@ class WorkflowSequenceIdempotencyTest(unittest.TestCase):
         self.assertIn("请不要重复执行 sequence", body["error"]["message"])
 
     def test_illegal_resume_and_manual_continue_should_return_business_conflict(self):
+        """非法恢复或重复 manual-continue，应返回可读业务冲突。"""
         project_id = self._create_project()
         sequence_resp = self.client.post(
             "/api/v1/workflows/chapter-sequence/execute",
