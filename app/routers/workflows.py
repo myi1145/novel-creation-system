@@ -28,7 +28,9 @@ def get_chapter_cycle_status(db: Session = Depends(get_db)) -> dict:
 @router.post("/chapter-cycle/execute")
 def execute_chapter_cycle(request: ExecuteChapterCycleRequest, db: Session = Depends(get_db)) -> dict:
     data = workflow_service.execute_chapter_cycle(db=db, request=request)
-    return success_response(data=data, message="单章主链执行完成")
+    stage_status = data.get("stage_status")
+    message = "单章主链执行成功" if stage_status == "completed" else "单章主链本轮执行结束"
+    return success_response(data=data, message=message)
 
 
 
@@ -36,7 +38,16 @@ def execute_chapter_cycle(request: ExecuteChapterCycleRequest, db: Session = Dep
 @router.post("/chapter-sequence/execute")
 def execute_chapter_sequence(request: ExecuteChapterSequenceRequest, db: Session = Depends(get_db)) -> dict:
     data = workflow_service.execute_chapter_sequence(db=db, request=request)
-    return success_response(data=data, message="连续章节执行完成")
+    stage_status = data.get("stage_status")
+    if stage_status == "completed":
+        message = "连续章节工作流执行成功"
+    elif stage_status == "attention_required":
+        message = "连续章节工作流已暂停，等待人工处理"
+    elif stage_status == "failed":
+        message = "连续章节工作流执行失败"
+    else:
+        message = "连续章节工作流本轮执行结束"
+    return success_response(data=data, message=message)
 
 @router.get("/chapter-sequence/reports/{workflow_run_id}")
 def get_chapter_sequence_report(workflow_run_id: str, db: Session = Depends(get_db)) -> dict:

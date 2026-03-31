@@ -884,16 +884,7 @@ class ChapterService:
         return [_to_publish_record_schema(item) for item in items]
 
     def generate_published_chapter_summary(self, db: Session, request: GenerateChapterSummaryRequest):
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="chapter_service",
-            event="summary.generate",
-            message_started="开始生成章节摘要",
-            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
-        )
-        summary = chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
-        scope.success("章节摘要生成完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id)
-        return summary
+        return chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
 
     def get_published_chapter_summary(self, db: Session, project_id: str, published_chapter_id: str, force_regenerate: bool = False):
         return chapter_summary_service.get_published_summary(db=db, project_id=project_id, published_chapter_id=published_chapter_id, force_regenerate=force_regenerate)
@@ -918,16 +909,7 @@ class ChapterService:
         return chapter_state_service.list_history(db=db, draft_id=draft_id, project_id=project_id)
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest) -> DerivedUpdateBatchResult:
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="chapter_service",
-            event="derived_updates.run",
-            message_started="开始执行发布后派生更新",
-            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
-        )
-        result = derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
-        scope.success("发布后派生更新完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id, status=result.status)
-        return result
+        return derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
 
     def get_post_publish_updates(self, db: Session, project_id: str, published_chapter_id: str) -> DerivedUpdateBatchResult | None:
         return derived_update_service.get_post_publish_updates(db=db, project_id=project_id, published_chapter_id=published_chapter_id)

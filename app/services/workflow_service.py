@@ -1478,7 +1478,36 @@ class WorkflowService:
             attention_chapter_count=sum(1 for item in chapter_results if item.stage_status == "attention_required"),
             chapter_results=chapter_results,
         ).model_dump(mode="json")
-        scope.success("连续章节工作流执行完成", workflow_run_id=final_run.id, chapter_no=request.start_chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=final_run.current_step, summary=f"processed={len(chapter_results)}")
+        if final_status == "attention_required":
+            scope.success(
+                "连续章节工作流本轮执行结束（已暂停）",
+                workflow_run_id=final_run.id,
+                chapter_no=request.start_chapter_no,
+                stop_reason=stop_reason,
+                next_action=next_action,
+                current_step=final_run.current_step,
+                summary=f"processed={len(chapter_results)}",
+            )
+        elif final_status == "failed":
+            scope.success(
+                "连续章节工作流执行结束（失败停止）",
+                workflow_run_id=final_run.id,
+                chapter_no=request.start_chapter_no,
+                stop_reason=stop_reason,
+                next_action=next_action,
+                current_step=final_run.current_step,
+                summary=f"processed={len(chapter_results)}",
+            )
+        else:
+            scope.success(
+                "连续章节工作流执行成功",
+                workflow_run_id=final_run.id,
+                chapter_no=request.start_chapter_no,
+                stop_reason=stop_reason,
+                next_action=next_action,
+                current_step=final_run.current_step,
+                summary=f"processed={len(chapter_results)}",
+            )
         return result
 
 

@@ -227,7 +227,7 @@ class ChangeSetService:
             logger_name="workflow",
             module="changeset_service",
             event="changeset.propose",
-            message_started="开始创建 ChangeSet 提案",
+            message_started="开始提议 ChangeSet",
             start_fields={"project_id": request.project_id, "workflow_run_id": request.workflow_run_id, "source_ref": request.source_ref},
         )
         try:
@@ -268,7 +268,7 @@ class ChangeSetService:
                     trigger_ref=changeset.id,
                     workflow_run_id=run.id,
                     trace_id=run.trace_id,
-                    reason="正文草稿已生成 ChangeSet 提案",
+                    reason="正文草稿已生成 ChangeSet 提议",
                     metadata={"changeset_id": changeset.id},
                 )
             workflow_run_service.update_progress(db=db, run=run, current_step="changeset_proposed", source_ref=changeset.id)

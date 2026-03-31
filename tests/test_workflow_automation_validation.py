@@ -341,7 +341,7 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         joined = "\n".join(cm.output)
 
         self.assertIn("开始执行连续章节工作流", joined)
-        self.assertIn("连续章节工作流执行完成", joined)
+        self.assertIn("连续章节工作流本轮执行结束（已暂停）", joined)
 
 
 if __name__ == "__main__":
