@@ -1,3 +1,5 @@
+import re
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,12 +10,16 @@ from app.core.logging import get_logger
 from app.utils.response import error_response
 
 logger = get_logger("error")
+_ID_PATTERN = re.compile(r"\b[a-zA-Z0-9_]*_id=[^,\s\)]+")
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    def _sanitize_message(raw: str) -> str:
+        return _ID_PATTERN.sub("id=***", raw)
+
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
-        message = exc.message
+        message = _sanitize_message(exc.message)
         if exc.code == "CONFLICT":
             if "sequence" in exc.message or "章节序列" in exc.message:
                 message = exc.message
@@ -24,8 +30,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             elif "manual" in exc.message or "人工" in exc.message:
                 message = "非法恢复执行：请先完成人工审阅流程再继续"
         logger.warning(
-            "业务请求失败",
-            extra={"extra_fields": {"event": "app_error", "status": "failed", "error_code": exc.code, "error_message": message}},
+            f"业务处理失败：{message}",
+            extra={"extra_fields": {"error_code": exc.code, "error_message": message}},
         )
         return JSONResponse(
             status_code=exc.status_code,

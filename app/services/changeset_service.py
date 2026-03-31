@@ -54,7 +54,7 @@ class ChangeSetService:
             logger_name="workflow",
             module="changeset_service",
             event="changeset.proposal.generate",
-            message_started="开始生成 ChangeSet 提议",
+            message_started="开始生成 ChangeSet",
             start_fields={"project_id": request.project_id, "draft_id": request.draft_id},
         )
         project = db.get(ProjectORM, request.project_id)

@@ -754,18 +754,6 @@ class AgentGateway:
             event="agent_gateway.invoke",
             status="started",
         )
-        logger.info(
-            "开始调用 Agent Gateway",
-            extra={
-                "extra_fields": {
-                    "project_id": audit_context.get("project_id") or context.get("project_id"),
-                    "workflow_run_id": audit_context.get("workflow_run_id"),
-                    "trace_id": audit_context.get("trace_id"),
-                    "agent_type": agent_type,
-                    "action": action_name,
-                }
-            },
-        )
         configured_provider = settings.agent_provider.strip().lower() or "mock"
         provider = self._resolve_provider()
         resolved_project_id = str(audit_context.get("project_id") or context.get("project_id") or "") or None

@@ -36,7 +36,7 @@ class PublishService:
             logger_name="workflow",
             module="publish_service",
             event="publish",
-            message_started="开始发布章节草稿",
+            message_started="开始发布章节",
             start_fields={"project_id": request.project_id, "draft_id": request.draft_id, "workflow_run_id": request.workflow_run_id},
         )
         draft = db.get(ChapterDraftORM, request.draft_id)
@@ -233,7 +233,7 @@ class PublishService:
             db.commit()
             db.refresh(published_chapter)
             db.refresh(publish_record)
-            scope.success("章节发布完成", workflow_run_id=run.id, chapter_no=goal.chapter_no, draft_id=draft.id, changeset_id=changeset.id, published_chapter_id=published_chapter.id)
+            scope.success(f"第 {goal.chapter_no} 章发布完成")
             return PublishResult(
                 published_chapter=PublishedChapter.model_validate(published_chapter),
                 publish_record=PublishRecord.model_validate(publish_record),
