@@ -17,8 +17,6 @@ class HumanReadableFormatter(logging.Formatter):
         "path",
         "status_code",
         "duration_ms",
-        "request_id",
-        "trace_id",
         "project_id",
         "chapter_no",
         "workflow_run_id",
@@ -55,7 +53,7 @@ class HumanReadableFormatter(logging.Formatter):
             parts.append(f" | {display}")
             used.add(key)
         for key in sorted(combined.keys()):
-            if key in used or key in {"module", "event", "status"}:
+            if key in used or key in {"module", "event", "status", "request_id", "trace_id"}:
                 continue
             value = combined.get(key)
             if value is None or value == "":
