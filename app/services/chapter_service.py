@@ -317,7 +317,7 @@ class ChapterService:
         )
         db.commit()
         scope.success(
-            f"第 {goal.chapter_no} 章已生成 {len(blueprints)} 个候选蓝图，等待人工选择正式蓝图",
+            f"第 {goal.chapter_no} 章已生成 {len(blueprints)} 个候选蓝图",
             workflow_run_id=run.id,
             chapter_no=goal.chapter_no,
             chapter_goal_id=request.chapter_goal_id,
@@ -489,18 +489,19 @@ class ChapterService:
 
     def generate_draft(self, db: Session, request: GenerateDraftRequest) -> ChapterDraft:
         set_log_context(project_id=request.project_id, module="chapter_service", event="generate_draft", status="started")
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="chapter_service",
-            event="generate_draft",
-            message_started="开始生成章节草稿",
-            start_fields={"project_id": request.project_id, "blueprint_id": request.blueprint_id},
-        )
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
         if blueprint is None:
             raise NotFoundError("章蓝图不存在")
         if not blueprint.selected:
             raise ConflictError("只能基于已选定的正式章蓝图生成正文草稿")
+        goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="chapter_service",
+            event="generate_draft",
+            message_started=f"开始生成第 {goal.chapter_no if goal is not None else '?'} 章正文草稿",
+            start_fields={"project_id": request.project_id, "blueprint_id": request.blueprint_id},
+        )
         run = workflow_run_service.ensure_run(
             db=db,
             project_id=request.project_id,
@@ -548,7 +549,6 @@ class ChapterService:
             .order_by(CanonSnapshotORM.version_no.desc())
             .first()
         )
-        goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
         continuity_pack = continuity_service.resolve_pack(
             db=db,
             request=ResolveContinuityPackRequest(

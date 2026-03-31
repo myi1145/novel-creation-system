@@ -62,7 +62,9 @@ class ChapterSummaryService:
             raise NotFoundError("已发布章节不存在")
         existing = dict(published.publish_metadata or {}).get("chapter_summary")
         if existing and not request.force_regenerate:
-            return ChapterSummary.model_validate(existing)
+            cached = ChapterSummary.model_validate(existing)
+            scope.success("章节摘要生成完成")
+            return cached
         project = db.get(ProjectORM, request.project_id)
         blueprint = db.get(ChapterBlueprintORM, published.blueprint_id)
         goal = db.get(ChapterGoalORM, published.chapter_goal_id)

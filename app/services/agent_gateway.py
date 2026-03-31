@@ -11,15 +11,11 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import AgentCallLogORM
 from app.services.prompt_template_service import PromptTemplateResolution, prompt_template_service
 from app.services.provider_governance_service import ProviderPreflightResult, provider_governance_service
 from app.services.rulepack_service import rulepack_service
-
-logger = get_logger("agent")
-
 
 class AgentGatewayError(RuntimeError):
     pass
@@ -861,10 +857,6 @@ class AgentGateway:
             else:
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary={"parse_report": parse_report} if parse_report else {}, source_metadata=_summarize(audit_context), error_message=error_message)
-                logger.exception(
-                    "Agent 调用失败",
-                    extra={"extra_fields": {"agent_type": agent_type, "action": action_name, "provider": active_provider, "model": model_name, "error_type": error_type}},
-                )
                 raise
         except Exception as exc:  # noqa: BLE001
             error_message = str(exc)
@@ -887,10 +879,6 @@ class AgentGateway:
             else:
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary={"parse_report": parse_report} if parse_report else {}, source_metadata=_summarize(audit_context), error_message=error_message)
-                logger.exception(
-                    "Agent 调用失败",
-                    extra={"extra_fields": {"agent_type": agent_type, "action": action_name, "provider": active_provider, "model": model_name, "error_type": error_type}},
-                )
                 raise
 
         latency_ms = int((time.perf_counter() - start) * 1000)
@@ -900,22 +888,6 @@ class AgentGateway:
         elif parse_report is not None:
             response_summary = {"value": response_summary, "parse_report": _summarize(parse_report)}
         self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=fallback_used, call_status=call_status, attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary=response_summary, source_metadata=_summarize(audit_context), error_message=error_message)
-        if fallback_used or (parse_report or {}).get("degraded"):
-            logger.warning(
-                "Agent 调用降级",
-                extra={
-                    "extra_fields": {
-                        "agent_type": agent_type,
-                        "action": action_name,
-                        "provider": active_provider,
-                        "model": model_name,
-                        "fallback_used": fallback_used,
-                        "call_status": call_status,
-                        "latency_ms": latency_ms,
-                        "stop_reason": (parse_report or {}).get("route"),
-                    }
-                },
-            )
         return AgentInvocationResult(payload=payload, configured_provider=configured_provider, active_provider=active_provider, model=model_name, prompt_template_id=prompt_resolution.template_id, prompt_template_key=prompt_resolution.template_key, prompt_template_version=prompt_resolution.template_version, prompt_scope_type=prompt_resolution.scope_type, prompt_scope_key=prompt_resolution.scope_key, prompt_provider_scope=prompt_resolution.provider_scope, fallback_used=fallback_used, call_status=call_status, latency_ms=latency_ms, attempt_count=attempt_count, error_type=error_type, error_message=error_message, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, parse_report=parse_report)
 
     def _handle_preflight_block(self, db: Session | None, preflight: ProviderPreflightResult, provider: AgentProvider, action_name: str, agent_type: str, method_name: str, context: dict[str, Any], audit_context: dict[str, Any], configured_provider: str, prompt_resolution: PromptTemplateResolution) -> AgentInvocationResult:
@@ -923,35 +895,10 @@ class AgentGateway:
         if settings.agent_fallback_to_mock and provider.name != "mock":
             payload = getattr(self._mock_provider, method_name)(context, prompt_resolution)
             latency_ms = int((time.perf_counter() - start) * 1000)
-            logger.warning(
-                "Agent 调用触发治理降级，已回退到 mock provider",
-                extra={
-                    "extra_fields": {
-                        "agent_type": agent_type,
-                        "action": action_name,
-                        "provider": provider.name,
-                        "fallback_provider": "mock",
-                        "stop_reason": preflight.reason,
-                        "rate_limited": preflight.rate_limited,
-                    }
-                },
-            )
             self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider="mock", model_name=settings.agent_model, prompt_resolution=prompt_resolution, fallback_used=True, call_status="fallback_success", attempt_count=0, error_type="rate_limited" if preflight.rate_limited else "circuit_open", circuit_state_at_call=preflight.circuit_state, rate_limited=preflight.rate_limited, latency_ms=latency_ms, request_summary=_summarize({"context": context}), response_summary=_summarize(payload), source_metadata=_summarize(audit_context), error_message=preflight.reason)
             return AgentInvocationResult(payload=payload, configured_provider=configured_provider, active_provider="mock", model=settings.agent_model, prompt_template_id=prompt_resolution.template_id, prompt_template_key=prompt_resolution.template_key, prompt_template_version=prompt_resolution.template_version, prompt_scope_type=prompt_resolution.scope_type, prompt_scope_key=prompt_resolution.scope_key, prompt_provider_scope=prompt_resolution.provider_scope, fallback_used=True, call_status="fallback_success", latency_ms=latency_ms, attempt_count=0, error_type="rate_limited" if preflight.rate_limited else "circuit_open", error_message=preflight.reason, circuit_state_at_call=preflight.circuit_state, rate_limited=preflight.rate_limited)
         latency_ms = int((time.perf_counter() - start) * 1000)
         self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=provider.name, model_name=self._resolve_model_name(provider), prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=0, error_type="rate_limited" if preflight.rate_limited else "circuit_open", circuit_state_at_call=preflight.circuit_state, rate_limited=preflight.rate_limited, latency_ms=latency_ms, request_summary=_summarize({"context": context}), response_summary={}, source_metadata=_summarize(audit_context), error_message=preflight.reason)
-        logger.error(
-            "Agent 调用被治理策略阻断",
-            extra={
-                "extra_fields": {
-                    "agent_type": agent_type,
-                    "action": action_name,
-                    "provider": provider.name,
-                    "stop_reason": preflight.reason,
-                    "rate_limited": preflight.rate_limited,
-                }
-            },
-        )
         raise AgentGatewayError(preflight.reason or "Provider 当前不可用")
 
     def _invoke_with_retry(self, provider: AgentProvider, method_name: str, context: dict[str, Any], prompt_resolution: PromptTemplateResolution) -> tuple[Any, int]:
