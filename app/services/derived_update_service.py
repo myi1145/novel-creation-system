@@ -51,17 +51,27 @@ class DerivedUpdateService:
         task = self._new_task(request=request, published=published, run_id=run_id, trace_id=trace_id, task_name=task_name)
         try:
             if task_name == "refresh_chapter_summary":
-                summary = chapter_summary_service.generate_for_published(
-                    db=db,
-                    request=GenerateChapterSummaryRequest(
+                force_regenerate = request.force_refresh_summary or request.force_rerun_tasks
+                existing_summary_payload = dict(published.publish_metadata or {}).get("chapter_summary")
+                if existing_summary_payload and not force_regenerate:
+                    summary = chapter_summary_service.get_published_summary(
+                        db=db,
                         project_id=request.project_id,
                         published_chapter_id=published.id,
-                        workflow_run_id=run_id,
-                        trace_id=trace_id,
-                        force_regenerate=request.force_refresh_summary or request.force_rerun_tasks,
-                    ),
-                    commit=False,
-                )
+                        force_regenerate=False,
+                    )
+                else:
+                    summary = chapter_summary_service.generate_for_published(
+                        db=db,
+                        request=GenerateChapterSummaryRequest(
+                            project_id=request.project_id,
+                            published_chapter_id=published.id,
+                            workflow_run_id=run_id,
+                            trace_id=trace_id,
+                            force_regenerate=force_regenerate,
+                        ),
+                        commit=False,
+                    )
                 task.status = "completed"
                 task.summary = "章节摘要已刷新"
                 task.details = {
