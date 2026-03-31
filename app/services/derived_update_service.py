@@ -6,12 +6,15 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import ImmutableLogORM, ProjectORM, PublishedChapterORM
 from app.schemas.chapter import GenerateChapterSummaryRequest
 from app.schemas.derived_update import DerivedUpdateBatchResult, DerivedUpdateTask, RunDerivedUpdatesRequest
 from app.services.chapter_summary_service import chapter_summary_service
 from app.services.workflow_run_service import workflow_run_service
 
+logger = get_logger("workflow")
 
 class DerivedUpdateService:
     def _new_task(self, *, request: RunDerivedUpdatesRequest, published: PublishedChapterORM, run_id: str | None, trace_id: str | None, task_name: str) -> DerivedUpdateTask:
@@ -119,6 +122,8 @@ class DerivedUpdateService:
         return task
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest, *, commit: bool = True) -> DerivedUpdateBatchResult:
+        set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="derived_update_service", event="derived_updates.run", status="started")
+        logger.info("开始执行发布后派生更新")
         published = db.get(PublishedChapterORM, request.published_chapter_id)
         if published is None or published.project_id != request.project_id:
             raise NotFoundError("已发布章节不存在")
@@ -195,6 +200,7 @@ class DerivedUpdateService:
             db.refresh(published)
         else:
             db.flush()
+        logger.info("发布后派生更新完成", extra={"extra_fields": {"event": "derived_updates.run", "status": "success", "workflow_run_id": run.id, "summary": f"task_count={len(tasks)}"}})
         return result
 
     def get_post_publish_updates(self, db: Session, *, project_id: str, published_chapter_id: str) -> DerivedUpdateBatchResult | None:

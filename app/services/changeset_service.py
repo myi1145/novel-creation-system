@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import (
     CanonSnapshotORM,
     ChangeSetORM,
@@ -40,6 +42,7 @@ _OBJECT_TYPE_TO_MODEL = {
 }
 
 _CHAPTER_CHANGESET_PREFIXES = ("chapter_", "draft_")
+logger = get_logger("workflow")
 
 
 class ChangeSetService:
@@ -210,6 +213,8 @@ class ChangeSetService:
         return proposal
 
     def propose(self, db: Session, request: ProposeChangeSetRequest) -> ChangeSet:
+        set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="changeset_service", event="changeset.propose", status="started")
+        logger.info("开始创建 ChangeSet 提案")
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在，无法创建 ChangeSet")
@@ -254,9 +259,12 @@ class ChangeSetService:
         db.add(ImmutableLogORM(event_type="changeset_proposed", project_id=request.project_id, workflow_run_id=run.id, trace_id=run.trace_id, event_payload={"changeset_id": changeset.id, "source_type": request.source_type, "source_ref": request.source_ref}))
         db.commit()
         db.refresh(changeset)
+        logger.info("ChangeSet 提案创建成功", extra={"extra_fields": {"event": "changeset.propose", "status": "success", "workflow_run_id": run.id, "summary": f"changeset_id={changeset.id}"}})
         return ChangeSet.model_validate(changeset)
 
     def approve(self, db: Session, changeset_id: str, approved_by: str) -> ChangeSet:
+        set_log_context(module="changeset_service", event="changeset.approve", status="started")
+        logger.info("开始审批 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -282,9 +290,12 @@ class ChangeSetService:
         db.add(ImmutableLogORM(event_type="changeset_approved", project_id=changeset.project_id, workflow_run_id=changeset.workflow_run_id, trace_id=changeset.trace_id, event_payload={"changeset_id": changeset.id, "approved_by": approved_by}))
         db.commit()
         db.refresh(changeset)
+        logger.info("ChangeSet 审批通过", extra={"extra_fields": {"event": "changeset.approve", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
         return ChangeSet.model_validate(changeset)
 
     def reject(self, db: Session, changeset_id: str, rejected_by: str, reason: str | None = None) -> ChangeSet:
+        set_log_context(module="changeset_service", event="changeset.reject", status="started")
+        logger.info("开始驳回 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -314,9 +325,12 @@ class ChangeSetService:
         db.add(ImmutableLogORM(event_type="changeset_rejected", project_id=changeset.project_id, workflow_run_id=changeset.workflow_run_id, trace_id=changeset.trace_id, event_payload={"changeset_id": changeset.id, "rejected_by": rejected_by, "reason": reason}))
         db.commit()
         db.refresh(changeset)
+        logger.info("ChangeSet 已驳回", extra={"extra_fields": {"event": "changeset.reject", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
         return ChangeSet.model_validate(changeset)
 
     def apply(self, db: Session, changeset_id: str) -> ChangeSet:
+        set_log_context(module="changeset_service", event="changeset.apply", status="started")
+        logger.info("开始应用 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -418,6 +432,7 @@ class ChangeSetService:
             )
             db.commit()
             db.refresh(changeset)
+            logger.info("ChangeSet 应用成功", extra={"extra_fields": {"event": "changeset.apply", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
             return ChangeSet.model_validate(changeset)
         except Exception as exc:
             db.rollback()
@@ -429,6 +444,7 @@ class ChangeSetService:
                 extra_metadata={"changeset_id": changeset.id, "error": str(exc)},
             )
             db.commit()
+            logger.exception("ChangeSet 应用失败", extra={"extra_fields": {"event": "changeset.apply", "status": "failed", "error_message": "ChangeSet 应用失败，请检查闸门与快照状态"}})
             raise
 
     def rollback(
@@ -441,6 +457,8 @@ class ChangeSetService:
         workflow_run_id: str | None = None,
         trace_id: str | None = None,
     ) -> ChangeSet:
+        set_log_context(workflow_run_id=workflow_run_id, module="changeset_service", event="changeset.rollback", status="started")
+        logger.info("开始回滚 ChangeSet", extra={"extra_fields": {"changeset_id": changeset_id}})
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
@@ -583,6 +601,7 @@ class ChangeSetService:
         )
         db.commit()
         db.refresh(changeset)
+        logger.info("ChangeSet 回滚完成", extra={"extra_fields": {"event": "changeset.rollback", "status": "success", "workflow_run_id": run.id, "summary": f"changeset_id={changeset.id}"}})
         schema = ChangeSet.model_validate(changeset)
         return schema.model_copy(update={
             "rolled_back_at": rollback_time,

@@ -11,10 +11,14 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.logging import get_logger
+from app.core.logging_context import set_log_context
 from app.db.models import AgentCallLogORM
 from app.services.prompt_template_service import PromptTemplateResolution, prompt_template_service
 from app.services.provider_governance_service import ProviderPreflightResult, provider_governance_service
 from app.services.rulepack_service import rulepack_service
+
+logger = get_logger("agent")
 
 
 class AgentGatewayError(RuntimeError):
@@ -742,6 +746,15 @@ class AgentGateway:
         return self._invoke(db=db, action_name="summarize_chapter", agent_type="summarizer", method_name="summarize_chapter", context=context, audit_context=audit_context)
 
     def _invoke(self, db: Session | None, action_name: str, agent_type: str, method_name: str, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
+        set_log_context(
+            project_id=str(audit_context.get("project_id") or context.get("project_id") or None),
+            workflow_run_id=str(audit_context.get("workflow_run_id") or ""),
+            trace_id=str(audit_context.get("trace_id") or ""),
+            module="agent_gateway",
+            event="agent_gateway.invoke",
+            status="started",
+        )
+        logger.info("开始调用 Agent Gateway", extra={"extra_fields": {"agent_type": agent_type, "action": action_name}})
         configured_provider = settings.agent_provider.strip().lower() or "mock"
         provider = self._resolve_provider()
         resolved_project_id = str(audit_context.get("project_id") or context.get("project_id") or "") or None
@@ -880,6 +893,7 @@ class AgentGateway:
         elif parse_report is not None:
             response_summary = {"value": response_summary, "parse_report": _summarize(parse_report)}
         self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=fallback_used, call_status=call_status, attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary=response_summary, source_metadata=_summarize(audit_context), error_message=error_message)
+        logger.info("Agent Gateway 调用完成", extra={"extra_fields": {"event": "agent_gateway.invoke", "status": "success" if call_status != "error" else "failed", "summary": f"call_status={call_status}, fallback={fallback_used}", "error_message": error_message}})
         return AgentInvocationResult(payload=payload, configured_provider=configured_provider, active_provider=active_provider, model=model_name, prompt_template_id=prompt_resolution.template_id, prompt_template_key=prompt_resolution.template_key, prompt_template_version=prompt_resolution.template_version, prompt_scope_type=prompt_resolution.scope_type, prompt_scope_key=prompt_resolution.scope_key, prompt_provider_scope=prompt_resolution.provider_scope, fallback_used=fallback_used, call_status=call_status, latency_ms=latency_ms, attempt_count=attempt_count, error_type=error_type, error_message=error_message, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, parse_report=parse_report)
 
     def _handle_preflight_block(self, db: Session | None, preflight: ProviderPreflightResult, provider: AgentProvider, action_name: str, agent_type: str, method_name: str, context: dict[str, Any], audit_context: dict[str, Any], configured_provider: str, prompt_resolution: PromptTemplateResolution) -> AgentInvocationResult:
