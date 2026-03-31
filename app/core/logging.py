@@ -13,19 +13,27 @@ _LOG_INITIALIZED = False
 
 class HumanReadableFormatter(logging.Formatter):
     PRIORITY_KEYS = [
+        "chapter_no",
+        "next_action",
+        "stop_reason",
+        "error_code",
+        "error_type",
+    ]
+    BLOCKED_KEYS = {
+        "module",
+        "event",
+        "status",
+        "request_id",
+        "trace_id",
+        "workflow_run_id",
+        "project_id",
+        "chapter_id",
         "method",
         "path",
         "status_code",
         "duration_ms",
-        "project_id",
-        "chapter_no",
-        "workflow_run_id",
-        "next_action",
-        "stop_reason",
-        "blueprint_id",
-        "changeset_id",
-        "published_chapter_id",
-    ]
+        "latency_ms",
+    }
 
     def _stringify(self, value: Any) -> str:
         if isinstance(value, bool):
@@ -42,18 +50,22 @@ class HumanReadableFormatter(logging.Formatter):
         combined.update(sanitize_for_logging(extra_fields))
         timestamp = self.formatTime(record, self.datefmt)
         parts = [f"{timestamp} [{record.levelname}] {record.getMessage()}"]
+        if record.levelno == logging.INFO:
+            elapsed_ms = combined.get("latency_ms")
+            if elapsed_ms is None:
+                elapsed_ms = combined.get("elapsed_ms")
+            if elapsed_ms is not None and elapsed_ms != "":
+                parts.append(f" | 耗时={self._stringify(elapsed_ms)}ms")
+            return "".join(parts)
         used: set[str] = set()
         for key in self.PRIORITY_KEYS:
             value = combined.get(key)
             if value is None or value == "":
                 continue
-            display = f"{key}={self._stringify(value)}"
-            if key == "duration_ms":
-                display = f"duration={self._stringify(value)}ms"
-            parts.append(f" | {display}")
+            parts.append(f" | {key}={self._stringify(value)}")
             used.add(key)
         for key in sorted(combined.keys()):
-            if key in used or key in {"module", "event", "status", "request_id", "trace_id"}:
+            if key in used or key in self.BLOCKED_KEYS or key.endswith("_id"):
                 continue
             value = combined.get(key)
             if value is None or value == "":
@@ -67,6 +79,8 @@ class HumanReadableFormatter(logging.Formatter):
 
 class RuntimeLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        if record.name == "novel.agent" and record.levelno < logging.ERROR:
+            return False
         if record.levelno >= logging.ERROR:
             return True
         if record.name in {"novel.app", "novel.error", "novel.workflow", "novel.agent"}:

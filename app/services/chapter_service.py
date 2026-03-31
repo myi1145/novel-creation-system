@@ -113,20 +113,14 @@ class ChapterService:
         )
         if existing_goal is not None:
             logger.warning(
-                "拒绝重复创建 chapter goal",
+                f"拒绝重复创建第 {request.chapter_no} 章章节目标",
                 extra={
                     "extra_fields": {
-                        "event": "create_goal",
-                        "status": "conflict",
-                        "project_id": request.project_id,
                         "chapter_no": request.chapter_no,
-                        "existing_goal_id": existing_goal.id,
-                        "existing_workflow_run_id": existing_goal.workflow_run_id,
                     }
                 },
             )
-            hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
-            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流（{hint}）")
+            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流")
         continuity_pack = continuity_service.resolve_pack(
             db=db,
             request=ResolveContinuityPackRequest(
@@ -213,16 +207,16 @@ class ChapterService:
 
     def generate_blueprints(self, db: Session, request: GenerateBlueprintsRequest) -> list[ChapterBlueprint]:
         set_log_context(project_id=request.project_id, module="chapter_service", event="generate_blueprints", status="started")
+        goal = db.get(ChapterGoalORM, request.chapter_goal_id)
+        if goal is None:
+            raise NotFoundError("章目标不存在")
         scope = StepLogScope(
             logger_name="workflow",
             module="chapter_service",
             event="generate_blueprints",
-            message_started="开始生成章节蓝图候选",
-            start_fields={"project_id": request.project_id, "chapter_goal_id": request.chapter_goal_id, "candidate_count": request.candidate_count},
+            message_started=f"开始生成第 {goal.chapter_no} 章蓝图候选",
+            start_fields={"chapter_no": goal.chapter_no, "candidate_count": request.candidate_count},
         )
-        goal = db.get(ChapterGoalORM, request.chapter_goal_id)
-        if goal is None:
-            raise NotFoundError("章目标不存在")
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
@@ -884,16 +878,7 @@ class ChapterService:
         return [_to_publish_record_schema(item) for item in items]
 
     def generate_published_chapter_summary(self, db: Session, request: GenerateChapterSummaryRequest):
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="chapter_service",
-            event="summary.generate",
-            message_started="开始生成章节摘要",
-            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
-        )
-        summary = chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
-        scope.success("章节摘要生成完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id)
-        return summary
+        return chapter_summary_service.generate_for_published(db=db, request=request, commit=True)
 
     def get_published_chapter_summary(self, db: Session, project_id: str, published_chapter_id: str, force_regenerate: bool = False):
         return chapter_summary_service.get_published_summary(db=db, project_id=project_id, published_chapter_id=published_chapter_id, force_regenerate=force_regenerate)
@@ -918,16 +903,7 @@ class ChapterService:
         return chapter_state_service.list_history(db=db, draft_id=draft_id, project_id=project_id)
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest) -> DerivedUpdateBatchResult:
-        scope = StepLogScope(
-            logger_name="workflow",
-            module="chapter_service",
-            event="derived_updates.run",
-            message_started="开始执行发布后派生更新",
-            start_fields={"project_id": request.project_id, "published_chapter_id": request.published_chapter_id},
-        )
-        result = derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
-        scope.success("发布后派生更新完成", project_id=request.project_id, workflow_run_id=request.workflow_run_id, published_chapter_id=request.published_chapter_id, status=result.status)
-        return result
+        return derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)
 
     def get_post_publish_updates(self, db: Session, project_id: str, published_chapter_id: str) -> DerivedUpdateBatchResult | None:
         return derived_update_service.get_post_publish_updates(db=db, project_id=project_id, published_chapter_id=published_chapter_id)

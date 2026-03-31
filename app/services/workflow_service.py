@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
-from app.core.business_logging import StepLogScope, truncate_ids
+from app.core.business_logging import StepLogScope
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import (
@@ -739,17 +739,12 @@ class WorkflowService:
         existing_goal = self._get_existing_goal(db=db, project_id=request.project_id, chapter_no=request.chapter_no)
         if existing_goal is not None:
             if request.workflow_run_id and existing_goal.workflow_run_id and existing_goal.workflow_run_id == request.workflow_run_id:
-                logger.info(
-                    "复用已存在 chapter goal",
-                    extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "idempotent", "project_id": request.project_id, "chapter_no": request.chapter_no, "chapter_goal_id": existing_goal.id, "workflow_run_id": request.workflow_run_id}},
-                )
                 return ChapterGoal.model_validate(existing_goal)
             logger.warning(
-                "拒绝重复创建 chapter goal",
-                extra={"extra_fields": {"event": "execute_chapter_cycle", "status": "conflict", "project_id": request.project_id, "chapter_no": request.chapter_no, "existing_goal_id": existing_goal.id, "existing_workflow_run_id": existing_goal.workflow_run_id}},
+                f"拒绝重复创建第 {request.chapter_no} 章章节目标",
+                extra={"extra_fields": {"chapter_no": request.chapter_no}},
             )
-            hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
-            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流（{hint}）")
+            raise ConflictError(f"当前项目下第 {request.chapter_no} 章目标已存在，请不要重复创建；如需继续，请恢复已有工作流")
         return chapter_service.create_goal(
             db=db,
             request=CreateChapterGoalRequest(
@@ -931,7 +926,7 @@ class WorkflowService:
             result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
             result.stage_status = "attention_required"
             result.next_action = "select_blueprint"
-            scope.success(f"第 {goal.chapter_no} 章工作流暂停，下一步=select_blueprint", workflow_run_id=run.id, chapter_no=goal.chapter_no, current_step="blueprint_selection_required", next_action="select_blueprint", candidate_count=len(blueprints), candidate_blueprint_ids=truncate_ids([item.id for item in blueprints]), stop_reason="blueprint_selection_required")
+            scope.success(f"第 {goal.chapter_no} 章工作流暂停，等待选择正式蓝图", chapter_no=goal.chapter_no)
             return result.model_dump(mode="json")
 
         scenes = self._list_scenes(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id)
@@ -1224,11 +1219,10 @@ class WorkflowService:
             existing_goal = self._get_existing_goal(db=db, project_id=request.project_id, chapter_no=request.start_chapter_no)
             if existing_goal is not None:
                 logger.warning(
-                    "拒绝重复启动 sequence：起始章节目标已存在",
-                    extra={"extra_fields": {"event": "execute_chapter_sequence", "status": "conflict", "project_id": request.project_id, "chapter_no": request.start_chapter_no, "existing_goal_id": existing_goal.id, "existing_workflow_run_id": existing_goal.workflow_run_id}},
+                    f"拒绝重复创建第 {request.start_chapter_no} 章章节目标",
+                    extra={"extra_fields": {"chapter_no": request.start_chapter_no}},
                 )
-                hint = f"existing_workflow_run_id={existing_goal.workflow_run_id}" if existing_goal.workflow_run_id else "existing_workflow_run_id=unknown"
-                raise ConflictError(f"当前项目下第 {request.start_chapter_no} 章目标已存在，请不要重复执行 sequence；如需继续，请恢复已有工作流（{hint}）")
+                raise ConflictError(f"当前项目下第 {request.start_chapter_no} 章目标已存在，请不要重复执行 sequence；如需继续，请恢复已有工作流")
         sequence_run = workflow_run_service.ensure_run(
             db=db,
             project_id=request.project_id,

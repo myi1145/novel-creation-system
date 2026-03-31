@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.business_logging import StepLogScope
 from app.core.exceptions import ConflictError, NotFoundError
-from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import CanonSnapshotORM, ChapterBlueprintORM, ChapterDraftORM, GateReviewORM, PublishedChapterORM
 from app.domain.enums import ChapterStatus
@@ -12,8 +12,6 @@ from app.services.agent_gateway import agent_gateway
 from app.services.chapter_state_service import chapter_state_service
 from app.services.rulepack_service import rulepack_service
 from app.services.workflow_run_service import workflow_run_service
-
-logger = get_logger("workflow")
 
 
 
@@ -26,7 +24,12 @@ class GateService:
 
     def run_reviews(self, db: Session, request: RunGateReviewRequest) -> list[GateReviewResult]:
         set_log_context(project_id=request.project_id, workflow_run_id=request.workflow_run_id, module="gate_service", event="gate.review", status="started")
-        logger.info("开始执行 Gate 审查")
+        scope = StepLogScope(
+            logger_name="workflow",
+            module="gate_service",
+            event="gate.review",
+            message_started="开始执行 Gate 审查",
+        )
         draft = db.get(ChapterDraftORM, request.draft_id)
         if draft is None or draft.project_id != request.project_id:
             raise NotFoundError("正文草稿不存在")
@@ -110,7 +113,7 @@ class GateService:
             else:
                 workflow_run_service.update_progress(db=db, run=run, current_step="gate_partial_passed", status="running")
         db.commit()
-        logger.info("Gate 审查完成", extra={"extra_fields": {"event": "gate.review", "status": "success", "summary": f"gate_count={len(results)}"}})
+        scope.success("Gate 审查完成")
         return results
 
     def run_single_gate(self, db: Session, project_id: str, draft_id: str, gate_name: str, workflow_run_id: str | None = None, trace_id: str | None = None) -> GateReviewResult:
