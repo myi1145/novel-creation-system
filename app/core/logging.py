@@ -29,6 +29,45 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(sanitize_for_logging(payload), ensure_ascii=False)
 
 
+class ConsoleFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        context = get_log_context()
+        extra_fields = getattr(record, "extra_fields", {})
+        if not isinstance(extra_fields, dict):
+            extra_fields = {}
+        timestamp = self.formatTime(record, self.datefmt)
+        method = extra_fields.get("method") or getattr(record, "method", None)
+        path = extra_fields.get("path") or getattr(record, "path", None)
+        status_code = extra_fields.get("status_code", getattr(record, "status_code", None))
+        duration_ms = extra_fields.get("duration_ms", getattr(record, "duration_ms", None))
+        request_id = extra_fields.get("request_id") or getattr(record, "request_id", None) or context.get("request_id")
+
+        parts = [f"{timestamp} [{record.levelname}] {record.getMessage()}"]
+        http_parts: list[str] = []
+        if method:
+            http_parts.append(str(method))
+        if path:
+            http_parts.append(str(path))
+        if status_code is not None:
+            http_parts.append(f"status={status_code}")
+        if duration_ms is not None:
+            http_parts.append(f"duration={duration_ms}ms")
+        if http_parts:
+            parts.append(" | " + " ".join(http_parts))
+        if request_id:
+            parts.append(f" | request_id={request_id}")
+        return "".join(parts)
+
+
+class RuntimeLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.ERROR:
+            return True
+        if record.name in {"novel.app", "novel.error"}:
+            return True
+        return False
+
+
 def sanitize_for_logging(value: Any, *, max_str_len: int = 300, max_items: int = 8) -> Any:
     blocked_keys = {"api_key", "authorization", "token", "password", "secret", "agent_api_key"}
     if isinstance(value, dict):
@@ -59,7 +98,8 @@ def setup_logging(level: str = "INFO") -> None:
         return
 
     log_level = getattr(logging, level.upper(), logging.INFO)
-    formatter = JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z")
+    json_formatter = JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z")
+    console_formatter = ConsoleFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
@@ -68,14 +108,19 @@ def setup_logging(level: str = "INFO") -> None:
         root_logger.removeHandler(existing)
 
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
+    stream_handler.setFormatter(console_formatter)
+    stream_handler.addFilter(RuntimeLogFilter())
     root_logger.addHandler(stream_handler)
 
     log_dir = PROJECT_ROOT / "logs"
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     file_handler = RotatingFileHandler(log_dir / "app.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(json_formatter)
+    file_handler.addFilter(RuntimeLogFilter())
     root_logger.addHandler(file_handler)
+
+    for noisy_logger in ("asyncio", "httpx", "httpcore", "urllib3", "uvicorn.access"):
+        logging.getLogger(noisy_logger).setLevel(logging.ERROR)
 
     _LOG_INITIALIZED = True
 

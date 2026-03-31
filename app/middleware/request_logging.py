@@ -26,11 +26,25 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             event="request",
             status="started",
         )
+        logger.info(
+            "收到请求",
+            extra={
+                "extra_fields": {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "client_ip": client_ip,
+                    "request_id": request_id,
+                    "event": "request.received",
+                    "status": "started",
+                }
+            },
+        )
 
         try:
             response = await call_next(request)
             duration_ms = int((time.perf_counter() - start) * 1000)
             response.headers["X-Request-ID"] = request_id
+            set_log_context(status="success", event="request.completed")
             logger.info(
                 "请求处理完成",
                 extra={
@@ -49,6 +63,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             return response
         except Exception:
             duration_ms = int((time.perf_counter() - start) * 1000)
+            set_log_context(status="failed", event="request.failed")
             logger.exception(
                 "请求处理失败",
                 extra={
