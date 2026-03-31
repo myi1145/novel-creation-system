@@ -18,6 +18,8 @@ from app.services.workflow_run_service import workflow_run_service
 logger = get_logger("workflow")
 
 class DerivedUpdateService:
+    _PLACEHOLDER_TASKS = {"refresh_vector_index", "refresh_graph_index", "refresh_search_index"}
+
     def _new_task(self, *, request: RunDerivedUpdatesRequest, published: PublishedChapterORM, run_id: str | None, trace_id: str | None, task_name: str) -> DerivedUpdateTask:
         now = datetime.now(timezone.utc)
         return DerivedUpdateTask(
@@ -36,7 +38,17 @@ class DerivedUpdateService:
         )
 
     def _task_from_existing(self, payload: dict) -> DerivedUpdateTask:
-        return DerivedUpdateTask.model_validate(payload)
+        task = DerivedUpdateTask.model_validate(payload)
+        details = dict(task.details or {})
+        is_placeholder = bool(details.get("is_placeholder")) or task.task_name in self._PLACEHOLDER_TASKS
+        if is_placeholder:
+            details.setdefault("mode", "placeholder")
+            details["is_placeholder"] = True
+        else:
+            details.setdefault("mode", "implemented")
+            details.setdefault("is_placeholder", False)
+        task.details = details
+        return task
 
     def _persist_result(self, db: Session, published: PublishedChapterORM, result: DerivedUpdateBatchResult) -> None:
         metadata = dict(published.publish_metadata or {})
@@ -75,6 +87,8 @@ class DerivedUpdateService:
                 task.status = "completed"
                 task.summary = "章节摘要已刷新"
                 task.details = {
+                    "mode": "implemented",
+                    "is_placeholder": False,
                     "summary": summary.summary,
                     "state_summary": summary.state_summary,
                     "next_chapter_seed": summary.next_chapter_seed,
@@ -95,6 +109,8 @@ class DerivedUpdateService:
                 task.status = "completed"
                 task.summary = "下一章输入种子已刷新"
                 task.details = {
+                    "mode": "implemented",
+                    "is_placeholder": False,
                     "next_chapter_seed": current_summary.next_chapter_seed,
                     "state_summary": current_summary.state_summary,
                 }
@@ -103,16 +119,17 @@ class DerivedUpdateService:
                 task.summary = f"{task_name} 当前为 P0 占位任务"
                 task.details = {
                     "mode": "placeholder",
+                    "is_placeholder": True,
                     "reason": "索引/图谱子系统尚未接入，当前仅保留正式派生任务壳层，不阻断发布闭环。",
                 }
             else:
                 task.status = "skipped"
                 task.summary = f"未识别的派生任务：{task_name}"
-                task.details = {"reason": "task_name 未纳入当前 P0 任务白名单"}
+                task.details = {"mode": "skipped_unknown", "is_placeholder": False, "reason": "task_name 未纳入当前 P0 任务白名单"}
         except Exception as exc:  # noqa: BLE001
             task.status = "failed"
             task.summary = f"派生更新任务失败：{task_name}"
-            task.details = {"error": str(exc)}
+            task.details = {"mode": "failed", "is_placeholder": False, "error": str(exc)}
         task.completed_at = datetime.now(timezone.utc)
         task.derived_at = task.completed_at
         db.add(
@@ -177,7 +194,12 @@ class DerivedUpdateService:
                     continue
                 tasks.append(self._execute_task(db=db, request=request, published=published, run_id=run.id, trace_id=run.trace_id, task_name=task_name))
 
-            overall_status = "completed_with_warnings" if any(task.status == "failed" for task in tasks) else "completed"
+            if any(task.status == "failed" for task in tasks):
+                overall_status = "failed"
+            elif any(task.status == "skipped" for task in tasks):
+                overall_status = "completed_with_warnings"
+            else:
+                overall_status = "completed"
             generated_at = datetime.now(timezone.utc)
             result = DerivedUpdateBatchResult(
                 project_id=request.project_id,

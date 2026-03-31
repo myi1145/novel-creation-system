@@ -317,6 +317,9 @@ class PublishRecord(StructuredCreativeObject):
 
 
 class PublishResult(BaseModel):
+    success: bool = True
+    publish_status: str = "published"
+    idempotent_hit: bool = False
     published_chapter: PublishedChapter
     publish_record: PublishRecord
     chapter_summary: ChapterSummary | None = None

@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.db.models import ChapterGoalORM, WorkflowRunORM
+from app.db.models import ChapterGoalORM, GateReviewORM, WorkflowRunORM
 from app.db.session import SessionLocal
 from app.main import create_app
 
@@ -59,6 +59,79 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         return resp.json()["data"]["id"]
+
+    def _prepare_draft_with_changeset(self, project_id: str, *, apply_changeset: bool) -> tuple[dict, dict]:
+        goal_resp = self.client.post(
+            "/api/v1/chapters/goals",
+            json={"project_id": project_id, "chapter_no": 1, "current_volume_goal": "第一章建立冲突"},
+        )
+        self.assertEqual(goal_resp.status_code, 200)
+        goal = goal_resp.json()["data"]
+
+        blueprints_resp = self.client.post(
+            "/api/v1/chapters/blueprints/generate",
+            json={"project_id": project_id, "chapter_goal_id": goal["id"], "candidate_count": 3},
+        )
+        self.assertEqual(blueprints_resp.status_code, 200)
+        blueprint_id = blueprints_resp.json()["data"][0]["id"]
+
+        selected_resp = self.client.post(
+            "/api/v1/chapters/blueprints/select",
+            json={"project_id": project_id, "blueprint_id": blueprint_id, "selected_by": "tester"},
+        )
+        self.assertEqual(selected_resp.status_code, 200)
+        selected_blueprint = selected_resp.json()["data"]
+
+        scenes_resp = self.client.post(
+            "/api/v1/chapters/scenes/decompose",
+            json={"project_id": project_id, "blueprint_id": selected_blueprint["id"]},
+        )
+        self.assertEqual(scenes_resp.status_code, 200)
+
+        draft_resp = self.client.post(
+            "/api/v1/chapters/drafts/generate",
+            json={"project_id": project_id, "blueprint_id": selected_blueprint["id"]},
+        )
+        self.assertEqual(draft_resp.status_code, 200)
+        draft = draft_resp.json()["data"]
+
+        gate_resp = self.client.post(
+            "/api/v1/gates/reviews",
+            json={"project_id": project_id, "draft_id": draft["id"]},
+        )
+        self.assertEqual(gate_resp.status_code, 200)
+
+        proposal_resp = self.client.post(
+            f"/api/v1/chapters/drafts/{draft['id']}/changeset-proposals/generate",
+            json={"project_id": project_id},
+        )
+        self.assertEqual(proposal_resp.status_code, 200)
+        proposal = proposal_resp.json()["data"]
+
+        changeset_resp = self.client.post(
+            "/api/v1/changesets/propose",
+            json={
+                "project_id": project_id,
+                "source_type": "chapter_draft",
+                "source_ref": draft["id"],
+                "rationale": proposal["rationale"],
+                "patch_operations": proposal["patch_operations"],
+            },
+        )
+        self.assertEqual(changeset_resp.status_code, 200)
+        changeset = changeset_resp.json()["data"]
+
+        approve_resp = self.client.post(
+            f"/api/v1/changesets/{changeset['id']}/approve",
+            json={"approved_by": "tester"},
+        )
+        self.assertEqual(approve_resp.status_code, 200)
+
+        if apply_changeset:
+            apply_resp = self.client.post(f"/api/v1/changesets/{changeset['id']}/apply")
+            self.assertEqual(apply_resp.status_code, 200)
+            changeset = apply_resp.json()["data"]
+        return draft, changeset
 
     def test_single_chapter_mainline_full_automation(self):
         """验证单章最小闭环：目标->蓝图->场景->草稿->Gate->ChangeSet->发布->摘要->派生更新。"""
@@ -342,6 +415,95 @@ class WorkflowAutomationValidationTest(unittest.TestCase):
 
         self.assertIn("开始执行连续章节工作流", joined)
         self.assertIn("连续章节工作流执行完成", joined)
+
+    def test_publish_should_fail_when_required_gates_not_satisfied(self):
+        project_id = self._create_project()
+        self._init_canon_snapshot(project_id)
+        draft, _changeset = self._prepare_draft_with_changeset(project_id, apply_changeset=True)
+
+        # 删除 narrative gate 通过记录，验证 publish 前置 gate 约束生效。
+        with SessionLocal() as db:
+            db.query(GateReviewORM).filter(
+                GateReviewORM.project_id == project_id,
+                GateReviewORM.draft_id == draft["id"],
+                GateReviewORM.gate_name == "narrative_gate",
+            ).delete(synchronize_session=False)
+            db.commit()
+
+        publish_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester"},
+        )
+        self.assertEqual(publish_resp.status_code, 409)
+        self.assertIn("发布前 Gate 条件未满足", publish_resp.json()["error"]["message"])
+
+    def test_publish_should_fail_when_changeset_not_applied(self):
+        project_id = self._create_project()
+        self._init_canon_snapshot(project_id)
+        draft, _changeset = self._prepare_draft_with_changeset(project_id, apply_changeset=False)
+
+        publish_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester"},
+        )
+        self.assertEqual(publish_resp.status_code, 409)
+        self.assertIn("当前草稿状态为", publish_resp.json()["error"]["message"])
+
+    def test_publish_should_be_idempotent_for_same_draft(self):
+        project_id = self._create_project()
+        self._init_canon_snapshot(project_id)
+        draft, changeset = self._prepare_draft_with_changeset(project_id, apply_changeset=True)
+
+        first_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester"},
+        )
+        self.assertEqual(first_resp.status_code, 200)
+        first_data = first_resp.json()["data"]
+        self.assertFalse(first_data["idempotent_hit"])
+        self.assertEqual(first_data["publish_status"], "published")
+        self.assertEqual(first_data["published_chapter"]["changeset_id"], changeset["id"])
+
+        second_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester-second"},
+        )
+        self.assertEqual(second_resp.status_code, 200)
+        second_data = second_resp.json()["data"]
+        self.assertTrue(second_data["idempotent_hit"])
+        self.assertEqual(second_data["publish_status"], "published")
+        self.assertEqual(second_data["published_chapter"]["id"], first_data["published_chapter"]["id"])
+        self.assertEqual(second_data["publish_record"]["id"], first_data["publish_record"]["id"])
+        self.assertEqual(
+            second_data["chapter_summary"]["next_chapter_seed"],
+            second_data["published_chapter"]["publish_metadata"]["next_chapter_seed"],
+        )
+
+    def test_derived_updates_should_have_machine_readable_task_status(self):
+        project_id = self._create_project()
+        self._init_canon_snapshot(project_id)
+        draft, _changeset = self._prepare_draft_with_changeset(project_id, apply_changeset=True)
+        publish_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester"},
+        )
+        self.assertEqual(publish_resp.status_code, 200)
+        publish_data = publish_resp.json()["data"]
+        derived = publish_data["derived_update_result"]
+
+        self.assertEqual(derived["status"], "completed_with_warnings")
+        self.assertGreaterEqual(len(derived["tasks"]), 5)
+        for task in derived["tasks"]:
+            self.assertIn("task_name", task)
+            self.assertIn("status", task)
+            self.assertIn("summary", task)
+            self.assertIn("details", task)
+            self.assertIn("mode", task["details"])
+            self.assertIn("is_placeholder", task["details"])
+
+        placeholder_tasks = [task for task in derived["tasks"] if task["details"]["is_placeholder"]]
+        self.assertGreaterEqual(len(placeholder_tasks), 1)
+        self.assertTrue(all(task["status"] == "skipped" for task in placeholder_tasks))
 
 
 if __name__ == "__main__":
