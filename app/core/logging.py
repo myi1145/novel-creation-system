@@ -10,6 +10,16 @@ from app.core.config import PROJECT_ROOT
 _LOG_INITIALIZED = False
 
 
+class ContextMergingLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        extra = dict(self.extra)
+        passed_extra = kwargs.get("extra")
+        if isinstance(passed_extra, dict):
+            extra.update(passed_extra)
+        kwargs["extra"] = extra
+        return msg, kwargs
+
+
 class HumanReadableFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         timestamp = self.formatTime(record, self.datefmt)
@@ -91,4 +101,4 @@ def setup_logging(level: str = "INFO") -> None:
 
 def get_logger(category: str = "app") -> logging.LoggerAdapter:
     logger = logging.getLogger(f"novel.{category}")
-    return logging.LoggerAdapter(logger, {"category": category})
+    return ContextMergingLoggerAdapter(logger, {"category": category})

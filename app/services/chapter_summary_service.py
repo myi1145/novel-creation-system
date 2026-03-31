@@ -166,6 +166,13 @@ class ChapterSummaryService:
         return summary
 
     def get_published_summary(self, db: Session, *, project_id: str, published_chapter_id: str, force_regenerate: bool = False) -> ChapterSummary:
+        if not force_regenerate:
+            published = db.get(PublishedChapterORM, published_chapter_id)
+            if published is None or published.project_id != project_id:
+                raise NotFoundError("已发布章节不存在")
+            existing = dict(published.publish_metadata or {}).get("chapter_summary")
+            if existing:
+                return ChapterSummary.model_validate(existing)
         return self.generate_for_published(
             db=db,
             request=GenerateChapterSummaryRequest(project_id=project_id, published_chapter_id=published_chapter_id, force_regenerate=force_regenerate),
