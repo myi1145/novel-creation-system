@@ -33,6 +33,17 @@ class ChangeSetEvidenceRef(BaseModel):
     note: str | None = None
 
 
+class ChangeSetRewriteSuggestion(BaseModel):
+    rewrite_issue_type: str
+    target_excerpt: str
+    target_location: str
+    rewrite_goal: str
+    rewrite_strategy: str
+    expected_effect: str
+    preserve_facts: list[str] = Field(default_factory=list)
+    avoid_patterns: list[str] = Field(default_factory=list)
+
+
 class ChangeSetProposal(BaseModel):
     project_id: str
     draft_id: str
@@ -45,6 +56,7 @@ class ChangeSetProposal(BaseModel):
     extracted_changes: list[str] = Field(default_factory=list)
     uncertain_items: list[str] = Field(default_factory=list)
     evidence_refs: list[ChangeSetEvidenceRef] = Field(default_factory=list)
+    rewrite_suggestions: list[ChangeSetRewriteSuggestion] = Field(default_factory=list)
     affected_domains: list[str] = Field(default_factory=list)
     review_recommendation: str = "human_review"
     generated_by: str = "service"

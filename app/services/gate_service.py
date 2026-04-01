@@ -3,20 +3,44 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.business_logging import StepLogScope
+from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging_context import set_log_context
-from app.db.models import CanonSnapshotORM, ChapterBlueprintORM, ChapterDraftORM, GateReviewORM, PublishedChapterORM
+from app.db.models import CanonSnapshotORM, ChapterBlueprintORM, ChapterDraftORM, ChapterGoalORM, GateReviewORM, PublishedChapterORM
 from app.domain.enums import ChapterStatus
 from app.schemas.gate import GateIssue, GateReviewResult, RunGateReviewRequest
 from app.services.agent_gateway import agent_gateway
 from app.services.chapter_state_service import chapter_state_service
+from app.services.chapter_summary_service import chapter_summary_service
+from app.services.character_voice_service import CharacterVoiceContext, character_voice_service
+from app.services.narrative_rewrite_service import narrative_rewrite_service
 from app.services.rulepack_service import rulepack_service
+from app.services.seed_consumption_service import SeedConsumptionContext, seed_consumption_service
 from app.services.workflow_run_service import workflow_run_service
 
 
 
 def _to_gate_review_schema(entity: GateReviewORM) -> GateReviewResult:
-    return GateReviewResult.model_validate(entity).model_copy(update={"generated_at": entity.created_at, "source_type": "gate_service", "source_ref": entity.draft_id})
+    from app.schemas.gate import CharacterVoiceReport
+    from app.schemas.chapter import SeedConsumptionReport
+
+    seed_report = None
+    voice_report = None
+    for issue in list(entity.issues or []):
+        metadata = issue.get("metadata") if isinstance(issue, dict) else None
+        if isinstance(metadata, dict) and isinstance(metadata.get("seed_consumption_report"), dict):
+            seed_report = SeedConsumptionReport.model_validate(metadata.get("seed_consumption_report"))
+        if isinstance(metadata, dict) and isinstance(metadata.get("character_voice_report"), dict):
+            voice_report = CharacterVoiceReport.model_validate(metadata.get("character_voice_report"))
+    return GateReviewResult.model_validate(entity).model_copy(
+        update={
+            "generated_at": entity.created_at,
+            "source_type": "gate_service",
+            "source_ref": entity.draft_id,
+            "seed_consumption_report": seed_report,
+            "character_voice_report": voice_report,
+        }
+    )
 
 
 class GateService:
@@ -177,6 +201,7 @@ class GateService:
             summary=summary,
             suggested_actions=suggested_actions or ([] if suggestion is None else [suggestion]),
             evidence_refs=evidence_refs or [],
+            metadata={},
         )
 
     def _evaluate_gate(self, db: Session, gate_name: str, draft: ChapterDraftORM, blueprint: ChapterBlueprintORM | None, latest_snapshot: CanonSnapshotORM | None, genre_context, run_id: str, trace_id: str) -> GateReviewResult:
@@ -207,6 +232,97 @@ class GateService:
                 overlap = sum(1 for token in summary_tokens if token in content)
                 if summary_tokens and overlap == 0:
                     issues.append(self._issue(severity="S2", message="正文与蓝图摘要几乎无对应，存在偏题风险", suggestion="对照蓝图补齐本章功能、冲突与信息增量", category="narrative_alignment", summary="与蓝图对齐度偏低", evidence_refs=[f"blueprint:{blueprint.id}", f"draft:{draft.id}"]))
+            if settings.enable_seed_consumption_gate:
+                goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id) if blueprint is not None else None
+                previous_summary = chapter_summary_service.get_latest_project_summary(
+                    db=db,
+                    project_id=draft.project_id,
+                    before_chapter_no=(goal.chapter_no if goal is not None else None),
+                )
+                seed_report = seed_consumption_service.evaluate(
+                    SeedConsumptionContext(
+                        chapter_no=(goal.chapter_no if goal is not None else 0),
+                        previous_next_chapter_seed=(previous_summary.next_chapter_seed if previous_summary is not None else None),
+                        previous_summary=(previous_summary.summary if previous_summary is not None else None),
+                        current_chapter_text=content,
+                        current_summary=(blueprint.summary if blueprint is not None else ""),
+                    )
+                )
+                seed_category = "seed_consumption_report"
+                seed_severity = "S0"
+                if seed_report.decision == "weak":
+                    seed_category = "weak_seed_consumption"
+                    seed_severity = "S1"
+                elif seed_report.decision == "missing":
+                    seed_category = "missing_seed_consumption"
+                    seed_severity = "S3" if settings.seed_consumption_require_strict else "S2"
+                seed_issue = self._issue(
+                    severity=seed_severity,
+                    message=seed_report.summary,
+                    suggestion="对照上一章 next_chapter_seed 补充行动、冲突或决策推进。",
+                    category=seed_category,
+                    summary=seed_report.summary,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                seed_issue.metadata["seed_consumption_report"] = seed_report.model_dump(mode="json")
+                issues.append(seed_issue)
+            for reveal_issue in narrative_rewrite_service.detect_over_explained_reveal(content):
+                reveal_gate_issue = self._issue(
+                    severity=reveal_issue.severity,
+                    message=f"检测到信息揭露过直：{reveal_issue.location_hint}",
+                    suggestion="改为“行动 + 反应 + 留白”表达，避免一次性讲满设定真相。",
+                    category="over_explained_reveal",
+                    summary=reveal_issue.explanation,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                reveal_gate_issue.metadata["rewrite_issue"] = {
+                    "issue_type": reveal_issue.issue_type,
+                    "location_hint": reveal_issue.location_hint,
+                    "severity": reveal_issue.severity,
+                    "explanation": reveal_issue.explanation,
+                    "suggested_rewrite_strategy": reveal_issue.suggested_rewrite_strategy,
+                    "excerpt": reveal_issue.excerpt,
+                }
+                issues.append(reveal_gate_issue)
+            if settings.enable_character_voice_gate:
+                goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id) if blueprint is not None else None
+                previous_summary = chapter_summary_service.get_latest_project_summary(
+                    db=db,
+                    project_id=draft.project_id,
+                    before_chapter_no=(goal.chapter_no if goal is not None else None),
+                )
+                character_cards = list((latest_snapshot.character_cards if latest_snapshot is not None else []) or [])
+                relationship_edges = list((latest_snapshot.relationship_edges if latest_snapshot is not None else []) or [])
+                voice_report = character_voice_service.evaluate(
+                    CharacterVoiceContext(
+                        chapter_no=(goal.chapter_no if goal is not None else 0),
+                        draft_text=content,
+                        previous_summary=(previous_summary.summary if previous_summary is not None else ""),
+                        character_cards=character_cards,
+                        relationship_edges=relationship_edges,
+                    )
+                )
+                for issue in voice_report.issues:
+                    voice_issue = self._issue(
+                        severity=issue.severity,
+                        message=f"人物声音风险：{issue.issue_type}（{issue.character_name}）",
+                        suggestion=issue.suggested_action,
+                        category=issue.issue_type,
+                        summary=issue.explanation,
+                        evidence_refs=[f"draft:{draft.id}"],
+                    )
+                    voice_issue.metadata["character_voice_issue"] = issue.model_dump(mode="json")
+                    issues.append(voice_issue)
+                report_issue = self._issue(
+                    severity=voice_report.highest_severity,
+                    message=voice_report.summary,
+                    suggestion="按人物卡与关系阶段补充动机桥接、情绪缓冲与个体化表达。",
+                    category="character_voice_report",
+                    summary=voice_report.summary,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                report_issue.metadata["character_voice_report"] = voice_report.model_dump(mode="json")
+                issues.append(report_issue)
         elif gate_name == "style_gate":
             if len(content) < 40:
                 issues.append(self._issue(severity="S2", message="草稿内容过短，无法进行稳定风格判断", suggestion="补充至少一段完整正文", category="style_quality", summary="样本不足", evidence_refs=[f"draft:{draft.id}"]))
