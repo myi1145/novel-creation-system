@@ -23,6 +23,7 @@ from app.services.chapter_state_service import chapter_state_service
 from app.services.chapter_summary_service import chapter_summary_service
 from app.services.derived_update_service import derived_update_service
 from app.services.gate_service import gate_service
+from app.services.quality_delta_service import QualityDeltaContext, quality_delta_service
 from app.services.workflow_run_service import workflow_run_service
 
 logger = get_logger("workflow")
@@ -70,12 +71,14 @@ class PublishService:
                 published_chapter_id=existing_published.id,
             )
             scope.success(f"草稿已发布，返回既有发布结果（幂等命中）")
+            existing_delta_payload = dict(existing_published.publish_metadata or {}).get("quality_delta_report")
             return PublishResult(
                 success=True,
                 publish_status="published",
                 idempotent_hit=True,
                 published_chapter=PublishedChapter.model_validate(existing_published),
                 publish_record=PublishRecord.model_validate(existing_record),
+                delta_report=(None if not existing_delta_payload else existing_delta_payload),
                 chapter_summary=chapter_summary,
                 derived_update_result=derived_update_result,
             )
@@ -165,6 +168,17 @@ class PublishService:
                 db.commit()
                 raise ConflictError("publish_gate 未通过，草稿不能发布")
             self._ensure_required_gates(db=db, project_id=request.project_id, draft_id=draft.id)
+            latest_reviews = self._list_latest_gate_reviews(db=db, project_id=request.project_id, draft_id=draft.id)
+            unresolved_critical_issues_count = quality_delta_service.count_unresolved_critical_issues(latest_reviews)
+            delta_report = quality_delta_service.evaluate(
+                QualityDeltaContext(
+                    draft_text=draft.content or "",
+                    candidate_published_text=draft.content or "",
+                    unresolved_critical_issues_count=unresolved_critical_issues_count,
+                )
+            )
+            if delta_report.decision == "fail":
+                raise ConflictError(f"发布质量增益检查未通过：{delta_report.summary}")
             title = request.publish_title or blueprint.title_hint or f"第{goal.chapter_no}章"
             published_chapter = PublishedChapterORM(
                 project_id=request.project_id,
@@ -185,6 +199,7 @@ class PublishService:
                     "draft_metadata": draft.draft_metadata,
                     "workflow_run_id": run.id,
                     "trace_id": run.trace_id,
+                    "quality_delta_report": delta_report.model_dump(mode="json"),
                 },
             )
             db.add(published_chapter)
@@ -262,6 +277,7 @@ class PublishService:
                         "snapshot_id": changeset.result_snapshot_id,
                         "changeset_id": changeset.id,
                         "published_by": request.published_by.strip(),
+                        "quality_delta_report": delta_report.model_dump(mode="json"),
                     },
                 )
             )
@@ -275,6 +291,7 @@ class PublishService:
                 idempotent_hit=False,
                 published_chapter=PublishedChapter.model_validate(published_chapter),
                 publish_record=PublishRecord.model_validate(publish_record),
+                delta_report=delta_report,
                 chapter_summary=chapter_summary,
                 derived_update_result=derived_update_result,
             )
@@ -317,22 +334,34 @@ class PublishService:
             raise
 
     def _ensure_required_gates(self, db: Session, project_id: str, draft_id: str) -> None:
-        from app.db.models import GateReviewORM
-
-        reviews = (
-            db.query(GateReviewORM)
-            .filter(
-                GateReviewORM.project_id == project_id,
-                GateReviewORM.draft_id == draft_id,
-                GateReviewORM.passed.is_(True),
-            )
-            .order_by(GateReviewORM.created_at.desc())
-            .all()
-        )
+        reviews = self._query_gate_reviews(db=db, project_id=project_id, draft_id=draft_id, passed_only=True)
         passed_gate_names = {review.gate_name for review in reviews}
         missing = [gate for gate in self.REQUIRED_PUBLISH_GATES if gate not in passed_gate_names]
         if missing:
             raise ConflictError(f"发布前 Gate 条件未满足，缺少通过的 Gate: {', '.join(missing)}")
+
+    def _query_gate_reviews(self, db: Session, *, project_id: str, draft_id: str, passed_only: bool = False) -> list:
+        from app.db.models import GateReviewORM
+
+        query = db.query(GateReviewORM).filter(
+            GateReviewORM.project_id == project_id,
+            GateReviewORM.draft_id == draft_id,
+        )
+        if passed_only:
+            query = query.filter(GateReviewORM.passed.is_(True))
+        return query.order_by(GateReviewORM.created_at.desc()).all()
+
+    def _list_latest_gate_reviews(self, db: Session, *, project_id: str, draft_id: str) -> list[dict]:
+        latest_by_gate: dict[str, dict] = {}
+        for review in self._query_gate_reviews(db=db, project_id=project_id, draft_id=draft_id, passed_only=False):
+            if review.gate_name in latest_by_gate:
+                continue
+            latest_by_gate[review.gate_name] = {
+                "gate_name": review.gate_name,
+                "pass_status": review.pass_status,
+                "issues": list(review.issues or []),
+            }
+        return list(latest_by_gate.values())
 
 
 publish_service = PublishService()
