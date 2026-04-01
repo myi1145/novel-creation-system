@@ -43,7 +43,42 @@ class PublishService:
         if draft is None or draft.project_id != request.project_id:
             raise NotFoundError("正文草稿不存在")
         if draft.status == ChapterStatus.PUBLISHED.value:
-            raise ConflictError("该草稿已经发布")
+            existing_published = db.query(PublishedChapterORM).filter(PublishedChapterORM.project_id == request.project_id, PublishedChapterORM.draft_id == draft.id).first()
+            if existing_published is None:
+                raise ConflictError("草稿状态为 published，但未找到对应已发布章节，请联系管理员排查数据一致性")
+            existing_record = (
+                db.query(PublishRecordORM)
+                .filter(
+                    PublishRecordORM.project_id == request.project_id,
+                    PublishRecordORM.draft_id == draft.id,
+                    PublishRecordORM.published_chapter_id == existing_published.id,
+                )
+                .order_by(PublishRecordORM.created_at.desc())
+                .first()
+            )
+            if existing_record is None:
+                raise ConflictError("草稿状态为 published，但未找到对应发布记录，请联系管理员排查数据一致性")
+            chapter_summary = chapter_summary_service.get_published_summary(
+                db=db,
+                project_id=request.project_id,
+                published_chapter_id=existing_published.id,
+                force_regenerate=False,
+            )
+            derived_update_result = derived_update_service.get_post_publish_updates(
+                db=db,
+                project_id=request.project_id,
+                published_chapter_id=existing_published.id,
+            )
+            scope.success(f"草稿已发布，返回既有发布结果（幂等命中）")
+            return PublishResult(
+                success=True,
+                publish_status="published",
+                idempotent_hit=True,
+                published_chapter=PublishedChapter.model_validate(existing_published),
+                publish_record=PublishRecord.model_validate(existing_record),
+                chapter_summary=chapter_summary,
+                derived_update_result=derived_update_result,
+            )
         if draft.status not in {ChapterStatus.CANON_APPLIED.value, ChapterStatus.PUBLISH_FAILED.value}:
             raise ConflictError(f"当前草稿状态为 {draft.status}，不允许进入发布阶段")
         if not request.published_by or not request.published_by.strip():
@@ -235,6 +270,9 @@ class PublishService:
             db.refresh(publish_record)
             scope.success(f"第 {goal.chapter_no} 章发布完成")
             return PublishResult(
+                success=True,
+                publish_status="published",
+                idempotent_hit=False,
                 published_chapter=PublishedChapter.model_validate(published_chapter),
                 publish_record=PublishRecord.model_validate(publish_record),
                 chapter_summary=chapter_summary,
