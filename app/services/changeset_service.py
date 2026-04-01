@@ -34,6 +34,8 @@ from app.services.workflow_run_service import workflow_run_service
 _ALLOWED_SNAPSHOT_FIELDS = {
     "timeline_events",
 }
+_ALLOWED_SNAPSHOT_OPS = {"append", "extend", "replace"}
+_ALLOWED_OBJECT_OPS = {"create_object", "create_version", "restore_version", "retire_version"}
 
 _OBJECT_TYPE_TO_MODEL = {
     "character_card": CharacterCardORM,
@@ -709,9 +711,13 @@ class ChangeSetService:
     def _validate_patch_operations(self, patch_operations: list[dict[str, Any]]) -> None:
         if not patch_operations:
             raise ConflictError("ChangeSet 至少需要一个 patch operation")
+        unsupported_ops: set[str] = set()
         for operation in patch_operations:
             kind = str(operation.get("kind", "snapshot")).lower()
             if kind == "snapshot":
+                op = str(operation.get("op", "")).lower()
+                if op not in _ALLOWED_SNAPSHOT_OPS:
+                    unsupported_ops.add(op or "<empty>")
                 field = operation.get("field") or operation.get("path")
                 if field not in _ALLOWED_SNAPSHOT_FIELDS:
                     raise ConflictError(f"不支持的 Canon 字段更新: {field}")
@@ -720,10 +726,18 @@ class ChangeSetService:
                 if object_type not in _OBJECT_TYPE_TO_MODEL:
                     raise ConflictError(f"不支持的对象类型: {object_type}")
                 op = str(operation.get("op", "")).lower()
-                if op not in {"create_object", "create_version", "restore_version", "retire_version"}:
-                    raise ConflictError(f"不支持的对象 patch op: {op}")
+                if op not in _ALLOWED_OBJECT_OPS:
+                    unsupported_ops.add(op or "<empty>")
             else:
                 raise ConflictError(f"不支持的 patch kind: {kind}")
+        if unsupported_ops:
+            supported_ops = sorted(_ALLOWED_SNAPSHOT_OPS | _ALLOWED_OBJECT_OPS)
+            raise ConflictError(
+                "当前 ChangeSet 包含不支持的 patch op: "
+                f"{', '.join(sorted(unsupported_ops))}；"
+                f"支持的 patch op: {', '.join(supported_ops)}；"
+                "action_name=propose_changeset"
+            )
 
     def _infer_required_gate_names(self, source_type: str, patch_operations: list[dict[str, Any]]) -> list[str]:
         has_snapshot_patch = any(str(operation.get("kind", "snapshot")).lower() == "snapshot" for operation in patch_operations)
