@@ -814,6 +814,40 @@ class WorkflowService:
         )
         return [GateReviewResult.model_validate(row) for row in rows]
 
+    def _record_cycle_state(self, db: Session, run: WorkflowRunORM, *, extra_metadata: dict | None = None) -> WorkflowRunORM:
+        return workflow_run_service.update_progress(
+            db=db,
+            run=run,
+            extra_metadata=extra_metadata or {},
+        ) or run
+
+    def _stop_cycle_for_manual_action(
+        self,
+        db: Session,
+        *,
+        run: WorkflowRunORM,
+        result: ExecuteChapterCycleResult,
+        current_step: str,
+        reason: str,
+        next_action: str,
+        extra_metadata: dict | None = None,
+    ) -> dict:
+        payload = dict(extra_metadata or {})
+        payload.update({"next_action": next_action, "manual_review_required": True})
+        workflow_run_service.mark_attention(
+            db=db,
+            run=run,
+            current_step=current_step,
+            reason=reason,
+            extra_metadata=payload,
+        )
+        db.commit()
+        latest_run = db.get(WorkflowRunORM, run.id) or run
+        result.run = WorkflowRun.model_validate(latest_run)
+        result.stage_status = "attention_required"
+        result.next_action = next_action
+        return result.model_dump(mode="json")
+
     def execute_chapter_cycle(self, db: Session, request: ExecuteChapterCycleRequest) -> dict:
         set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, workflow_run_id=request.workflow_run_id, module="workflow_service", event="execute_chapter_cycle", status="started")
         scope = StepLogScope(
@@ -915,19 +949,15 @@ class WorkflowService:
         )
 
         if selected_blueprint is None:
-            workflow_run_service.mark_attention(
+            return self._stop_cycle_for_manual_action(
                 db=db,
                 run=run,
+                result=result,
                 current_step="blueprint_selection_required",
                 reason="候选章蓝图已生成，等待人工确认正式蓝图",
-                extra_metadata={"chapter_goal_id": goal.id, "candidate_blueprint_ids": [item.id for item in blueprints], "next_action": "select_blueprint", "stop_reason": "blueprint_selection_required"},
+                next_action="select_blueprint",
+                extra_metadata={"chapter_goal_id": goal.id, "candidate_blueprint_ids": [item.id for item in blueprints], "stop_reason": "blueprint_selection_required"},
             )
-            db.commit()
-            result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
-            result.stage_status = "attention_required"
-            result.next_action = "select_blueprint"
-            scope.success(f"第 {goal.chapter_no} 章工作流暂停，等待选择正式蓝图", chapter_no=goal.chapter_no)
-            return result.model_dump(mode="json")
 
         scenes = self._list_scenes(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id)
         if not scenes:
@@ -957,6 +987,16 @@ class WorkflowService:
             )
             run = db.get(WorkflowRunORM, run.id) or run
         result.draft = draft
+        run = self._record_cycle_state(
+            db=db,
+            run=run,
+            extra_metadata={
+                "cycle_draft_status": "ready",
+                "draft_id": draft.id,
+                "chapter_goal_id": goal.id,
+                "selected_blueprint_id": selected_blueprint.id,
+            },
+        )
 
         gate_results: list[GateReviewResult] = []
         if request.auto_run_gates:
@@ -1010,17 +1050,36 @@ class WorkflowService:
                     result.gate_results = rerun_results
                     result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft
                     if any(item.pass_status == "failed" for item in rerun_results):
-                        result.run = WorkflowRun.model_validate(run)
-                        result.stage_status = "attention_required"
-                        result.next_action = "review_revised_draft"
-                        return result.model_dump(mode="json")
+                        return self._stop_cycle_for_manual_action(
+                            db=db,
+                            run=run,
+                            result=result,
+                            current_step="review_revised_draft_required",
+                            reason="修订后 Gate 仍未通过，需要人工审阅修订结果",
+                            next_action="review_revised_draft",
+                            extra_metadata={"draft_id": result.draft.id if result.draft else revised_draft.id},
+                        )
                     gate_results = rerun_results
                     draft = result.draft
                 else:
-                    result.run = WorkflowRun.model_validate(run)
-                    result.stage_status = "attention_required"
-                    result.next_action = "revise_draft"
-                    return result.model_dump(mode="json")
+                    return self._stop_cycle_for_manual_action(
+                        db=db,
+                        run=run,
+                        result=result,
+                        current_step="draft_revision_required",
+                        reason="Gate 未通过，等待人工修订草稿",
+                        next_action="revise_draft",
+                        extra_metadata={"draft_id": result.draft.id if result.draft else draft.id},
+                    )
+            run = self._record_cycle_state(
+                db=db,
+                run=run,
+                extra_metadata={
+                    "cycle_gate_status": "passed",
+                    "gate_result_count": len(gate_results),
+                    "gate_failed_count": sum(1 for item in gate_results if item.pass_status == "failed"),
+                },
+            )
 
         changeset = self._get_latest_changeset(db=db, project_id=request.project_id, draft_id=draft.id)
         proposal: ChangeSetProposal | None = None
@@ -1043,31 +1102,25 @@ class WorkflowService:
                     resolved_patch_operations = list(proposal.patch_operations)
                     run = db.get(WorkflowRunORM, run.id) or run
                 else:
-                    workflow_run_service.mark_attention(
+                    return self._stop_cycle_for_manual_action(
                         db=db,
                         run=run,
+                        result=result,
                         current_step="changeset_proposal_required",
                         reason="缺少 ChangeSet Proposal，无法自动生成 ChangeSet",
+                        next_action="generate_changeset_proposal",
                         extra_metadata={"draft_id": draft.id},
                     )
-                    db.commit()
-                    result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
-                    result.stage_status = "attention_required"
-                    result.next_action = "generate_changeset_proposal"
-                    return result.model_dump(mode="json")
             if not resolved_patch_operations:
-                workflow_run_service.mark_attention(
+                return self._stop_cycle_for_manual_action(
                     db=db,
                     run=run,
+                    result=result,
                     current_step="changeset_patch_required",
                     reason="ChangeSet Proposal 未生成有效 patch_operations",
+                    next_action="review_changeset_proposal",
                     extra_metadata={"draft_id": draft.id},
                 )
-                db.commit()
-                result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
-                result.stage_status = "attention_required"
-                result.next_action = "review_changeset_proposal"
-                return result.model_dump(mode="json")
             if changeset is None or changeset.status == ChangeSetStatus.REJECTED.value:
                 rationale = (request.changeset_rationale or getattr(proposal, "rationale", None) or "基于本章正文推进 Canon / 对象状态").strip()
                 changeset = changeset_service.propose(
@@ -1083,6 +1136,18 @@ class WorkflowService:
                     ),
                 )
                 run = db.get(WorkflowRunORM, run.id) or run
+
+        if changeset is not None:
+            run = self._record_cycle_state(
+                db=db,
+                run=run,
+                extra_metadata={
+                    "changeset_id": changeset.id,
+                    "changeset_status": changeset.status,
+                    "result_snapshot_id": changeset.result_snapshot_id,
+                    "cycle_changeset_phase": "proposed" if changeset.status == ChangeSetStatus.PROPOSED.value else changeset.status,
+                },
+            )
 
         if changeset is not None and request.auto_approve_changeset and changeset.status == ChangeSetStatus.PROPOSED.value:
             if not request.approved_by or not request.approved_by.strip():
@@ -1123,6 +1188,16 @@ class WorkflowService:
                 run = db.get(WorkflowRunORM, run.id) or run
             changeset = changeset_service.apply(db=db, changeset_id=changeset.id)
             run = db.get(WorkflowRunORM, run.id) or run
+            run = self._record_cycle_state(
+                db=db,
+                run=run,
+                extra_metadata={
+                    "changeset_id": changeset.id,
+                    "changeset_status": changeset.status,
+                    "result_snapshot_id": changeset.result_snapshot_id,
+                    "cycle_changeset_phase": "applied",
+                },
+            )
 
         result.changeset = changeset
 
@@ -1177,6 +1252,21 @@ class WorkflowService:
                             commit=True,
                         )
                     run = db.get(WorkflowRunORM, run.id) or run
+                run = self._record_cycle_state(
+                    db=db,
+                    run=run,
+                    extra_metadata={
+                        "publish_status": "published",
+                        "published_chapter_id": result.publish_result.published_chapter.id,
+                        "publish_record_id": result.publish_result.publish_record.id,
+                        "chapter_summary_status": ("generated" if result.chapter_summary is not None else "skipped"),
+                        "derived_update_status": (
+                            result.derived_update_result.status
+                            if result.derived_update_result is not None
+                            else ("available_from_publish" if result.publish_result.derived_update_result is not None else "skipped")
+                        ),
+                    },
+                )
             result.run = WorkflowRun.model_validate(run)
             result.stage_status = "completed"
             result.next_action = None
@@ -1185,17 +1275,50 @@ class WorkflowService:
 
         result.run = WorkflowRun.model_validate(db.get(WorkflowRunORM, run.id) or run)
         if changeset is not None and changeset.status == ChangeSetStatus.APPLIED.value:
-            result.stage_status = "canon_applied"
-            result.next_action = "publish"
+            return self._stop_cycle_for_manual_action(
+                db=db,
+                run=run,
+                result=result,
+                current_step="publish_required",
+                reason="ChangeSet 已应用，等待人工发布",
+                next_action="publish",
+                extra_metadata={
+                    "changeset_id": changeset.id,
+                    "result_snapshot_id": changeset.result_snapshot_id,
+                    "cycle_summary_status": "pending_publish",
+                    "cycle_derived_update_status": "pending_publish",
+                },
+            )
         elif changeset is not None and changeset.status == ChangeSetStatus.APPROVED.value:
-            result.stage_status = "changeset_approved"
-            result.next_action = "apply_changeset"
+            return self._stop_cycle_for_manual_action(
+                db=db,
+                run=run,
+                result=result,
+                current_step="changeset_apply_required",
+                reason="ChangeSet 已审批，等待人工 apply",
+                next_action="apply_changeset",
+                extra_metadata={"changeset_id": changeset.id},
+            )
         elif changeset is not None and changeset.status == ChangeSetStatus.PROPOSED.value:
-            result.stage_status = "changeset_proposed"
-            result.next_action = "approve_changeset"
+            return self._stop_cycle_for_manual_action(
+                db=db,
+                run=run,
+                result=result,
+                current_step="changeset_approval_required",
+                reason="ChangeSet 已提议，等待人工审批",
+                next_action="approve_changeset",
+                extra_metadata={"changeset_id": changeset.id},
+            )
         elif gate_results:
-            result.stage_status = "review_passed"
-            result.next_action = "generate_changeset_proposal"
+            return self._stop_cycle_for_manual_action(
+                db=db,
+                run=run,
+                result=result,
+                current_step="changeset_proposal_required",
+                reason="Gate 已通过，等待人工确认并生成 ChangeSet",
+                next_action="generate_changeset_proposal",
+                extra_metadata={"draft_id": draft.id},
+            )
         else:
             result.stage_status = "draft_ready"
             result.next_action = "run_gates"
