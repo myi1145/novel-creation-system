@@ -16,22 +16,27 @@ from app.services.character_voice_service import CharacterVoiceContext, characte
 from app.services.narrative_rewrite_service import narrative_rewrite_service
 from app.services.rulepack_service import rulepack_service
 from app.services.seed_consumption_service import SeedConsumptionContext, seed_consumption_service
+from app.services.style_gate_service import StyleGateContext, style_gate_service
 from app.services.workflow_run_service import workflow_run_service
 
 
 
 def _to_gate_review_schema(entity: GateReviewORM) -> GateReviewResult:
     from app.schemas.gate import CharacterVoiceReport
+    from app.schemas.gate import StyleReport
     from app.schemas.chapter import SeedConsumptionReport
 
     seed_report = None
     voice_report = None
+    style_report = None
     for issue in list(entity.issues or []):
         metadata = issue.get("metadata") if isinstance(issue, dict) else None
         if isinstance(metadata, dict) and isinstance(metadata.get("seed_consumption_report"), dict):
             seed_report = SeedConsumptionReport.model_validate(metadata.get("seed_consumption_report"))
         if isinstance(metadata, dict) and isinstance(metadata.get("character_voice_report"), dict):
             voice_report = CharacterVoiceReport.model_validate(metadata.get("character_voice_report"))
+        if isinstance(metadata, dict) and isinstance(metadata.get("style_report"), dict):
+            style_report = StyleReport.model_validate(metadata.get("style_report"))
     return GateReviewResult.model_validate(entity).model_copy(
         update={
             "generated_at": entity.created_at,
@@ -39,6 +44,7 @@ def _to_gate_review_schema(entity: GateReviewORM) -> GateReviewResult:
             "source_ref": entity.draft_id,
             "seed_consumption_report": seed_report,
             "character_voice_report": voice_report,
+            "style_report": style_report,
         }
     )
 
@@ -326,6 +332,43 @@ class GateService:
         elif gate_name == "style_gate":
             if len(content) < 40:
                 issues.append(self._issue(severity="S2", message="草稿内容过短，无法进行稳定风格判断", suggestion="补充至少一段完整正文", category="style_quality", summary="样本不足", evidence_refs=[f"draft:{draft.id}"]))
+            if settings.enable_style_gate:
+                goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id) if blueprint is not None else None
+                previous_summary = chapter_summary_service.get_latest_project_summary(
+                    db=db,
+                    project_id=draft.project_id,
+                    before_chapter_no=(goal.chapter_no if goal is not None else None),
+                )
+                style_report = style_gate_service.evaluate(
+                    StyleGateContext(
+                        chapter_no=(goal.chapter_no if goal is not None else 0),
+                        target_genre=genre_context.genre_name,
+                        draft_text=content,
+                        previous_summary=(previous_summary.summary if previous_summary is not None else ""),
+                        genre_style=dict(genre_context.style or {}),
+                    )
+                )
+                for style_issue_item in style_report.issues:
+                    style_issue = self._issue(
+                        severity=style_issue_item.severity,
+                        message=f"风格风险：{style_issue_item.issue_type}",
+                        suggestion=style_issue_item.suggested_action,
+                        category=style_issue_item.issue_type,
+                        summary=style_issue_item.explanation,
+                        evidence_refs=[f"draft:{draft.id}"],
+                    )
+                    style_issue.metadata["style_issue"] = style_issue_item.model_dump(mode="json")
+                    issues.append(style_issue)
+                report_issue = self._issue(
+                    severity=style_report.highest_severity,
+                    message=style_report.summary,
+                    suggestion="对照题材风格约束统一语体、术语和叙述腔调。",
+                    category="style_report",
+                    summary=style_report.summary,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                report_issue.metadata["style_report"] = style_report.model_dump(mode="json")
+                issues.append(report_issue)
         elif gate_name == "publish_gate":
             existing_publish = db.query(PublishedChapterORM).filter(PublishedChapterORM.draft_id == draft.id).first()
             if existing_publish is not None:
