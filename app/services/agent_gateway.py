@@ -473,6 +473,10 @@ STRUCTURED_OUTPUT_SPECS: dict[str, dict[str, Any]] = {
     "propose_changeset": {"output_type": "ChangeProposalDraft", "expected_root": "object"},
     "summarize_chapter": {"output_type": "ChapterSummary", "expected_root": "object"},
 }
+_CHANGESET_ALLOWED_SNAPSHOT_OPS = {"append", "extend", "replace"}
+_CHANGESET_ALLOWED_OBJECT_OPS = {"create_object", "create_version", "restore_version", "retire_version"}
+_CHANGESET_ALLOWED_OBJECT_TYPES = {"character_card", "rule_card", "open_loop_card", "relationship_edge"}
+_CHANGESET_ALLOWED_SNAPSHOT_FIELDS = {"timeline_events"}
 
 
 def _build_parse_issue(code: str, severity: str, level: str, message: str, field_path: str | None = None) -> dict[str, Any]:
@@ -548,12 +552,16 @@ def _normalize_changeset_proposal(data: dict[str, Any], *, provider: str, model:
     patch_operations = []
     for item in list(data.get("patch_operations") or []):
         if isinstance(item, dict):
-            patch_operations.append({
+            normalized_item: dict[str, Any] = {
                 "kind": str(item.get("kind") or "snapshot"),
                 "op": str(item.get("op") or "append"),
                 "field": str(item.get("field") or "timeline_events"),
                 "value": item.get("value"),
-            })
+            }
+            for key in ("path", "object_type", "logical_object_id", "version_ref", "expected_version_no", "bind_to_canon"):
+                if key in item:
+                    normalized_item[key] = item.get(key)
+            patch_operations.append(normalized_item)
     excerpt = str(data.get("excerpt") or str(context.get("content") or "")[:180]).strip()
     return {
         "proposal_summary": str(data.get("proposal_summary") or "已生成 ChangeSet 提议。"),
@@ -744,6 +752,34 @@ class AgentGateway:
             normalized = _normalize_changeset_proposal(business_payload, provider=provider_name, model=model_name, context=context)
             decision = "accepted"
             route = "continue"
+            unsupported_ops: set[str] = set()
+            unsupported_object_types: set[str] = set()
+            unsupported_snapshot_fields: set[str] = set()
+            for item in list(normalized.get("patch_operations") or []):
+                kind = str(item.get("kind") or "snapshot").lower()
+                op = str(item.get("op") or "").lower()
+                if kind == "snapshot":
+                    if op not in _CHANGESET_ALLOWED_SNAPSHOT_OPS:
+                        unsupported_ops.add(op or "<empty>")
+                    field = str(item.get("field") or item.get("path") or "")
+                    if field not in _CHANGESET_ALLOWED_SNAPSHOT_FIELDS:
+                        unsupported_snapshot_fields.add(field or "<empty>")
+                elif kind == "object":
+                    if op not in _CHANGESET_ALLOWED_OBJECT_OPS:
+                        unsupported_ops.add(op or "<empty>")
+                    object_type = str(item.get("object_type") or "")
+                    if object_type and object_type not in _CHANGESET_ALLOWED_OBJECT_TYPES:
+                        unsupported_object_types.add(object_type)
+                else:
+                    unsupported_ops.add(op or f"kind:{kind}")
+            if unsupported_ops or unsupported_object_types or unsupported_snapshot_fields:
+                issues.append(_build_parse_issue("E005", "P1", "L2", "ChangeSet patch_operations 含非白名单 op/object_type/field"))
+                report = _build_parse_report(method_name, decision="reask", route="reask", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+                report["unsupported_ops"] = sorted(unsupported_ops)
+                report["unsupported_object_types"] = sorted(unsupported_object_types)
+                report["unsupported_snapshot_fields"] = sorted(unsupported_snapshot_fields)
+                report["supported_ops"] = sorted(_CHANGESET_ALLOWED_SNAPSHOT_OPS | _CHANGESET_ALLOWED_OBJECT_OPS)
+                raise AgentStructuredOutputError("ChangeSet patch_operations 包含不支持操作", error_code="parse_e005", severity="P1", decision="reask", parse_report=report)
             if not normalized.get("patch_operations"):
                 issues.append(_build_parse_issue("E003", "P1", "L2", "ChangeSet 提议缺少 patch_operations，已转人工审阅", "patch_operations"))
                 normalized["review_recommendation"] = "human_review"
