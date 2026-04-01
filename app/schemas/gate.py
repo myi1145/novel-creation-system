@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field, model_validator
 
 from app.domain.enums import GateName
+from app.schemas.chapter import SeedConsumptionReport
 from app.schemas.creative_object import StructuredCreativeObject
 
 
@@ -32,6 +33,7 @@ class GateIssue(BaseModel):
     summary: str | None = None
     suggested_actions: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class GateReviewResult(StructuredCreativeObject):
@@ -48,6 +50,7 @@ class GateReviewResult(StructuredCreativeObject):
     can_override: bool = False
     override_role: str | None = None
     issues: list[GateIssue] = Field(default_factory=list)
+    seed_consumption_report: SeedConsumptionReport | None = None
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
