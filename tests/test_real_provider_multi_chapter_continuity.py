@@ -1,7 +1,10 @@
 """阶段三：真实 provider 同项目 1~3 章连续章节验收。"""
 
+import json
 import time
 import unittest
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +17,11 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
+        run_tag = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        cls.export_dir = Path("output") / "real_provider_multi_chapter" / f"{run_tag}_{uuid4().hex[:8]}"
+        cls.export_dir.mkdir(parents=True, exist_ok=True)
+        cls.exported_files: list[str] = []
+        cls.export_warnings: list[str] = []
 
     def _create_project(self) -> str:
         resp = self.client.post(
@@ -88,6 +96,48 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
                 )
             )
         return "\n".join(rows)
+
+    def _extract_text_payload(self, data: dict[str, Any] | None) -> str:
+        if not isinstance(data, dict):
+            return str(data or "")
+        for key in ("content", "body", "chapter_content", "draft_content", "text", "manuscript", "rendered_content"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return json.dumps(data, ensure_ascii=False, indent=2)
+
+    def _export_chapter_text(
+        self,
+        *,
+        chapter_no: int,
+        source_type: str,
+        body_text: str,
+        project_id: str,
+        published_chapter_id: str | None = None,
+        next_chapter_seed: str | None = None,
+        state_summary: str | None = None,
+    ) -> None:
+        filename = f"chapter_{chapter_no}_{source_type}.md"
+        file_path = self.export_dir / filename
+        header = [
+            f"# Chapter {chapter_no} - {source_type}",
+            "",
+            f"- project_id: {project_id}",
+            f"- chapter_no: {chapter_no}",
+            f"- source_type: {source_type}",
+            f"- published_chapter_id: {published_chapter_id or ''}",
+            f"- generated_at: {datetime.now(timezone.utc).isoformat()}",
+        ]
+        if source_type == "summary":
+            header.append(f"- next_chapter_seed: {next_chapter_seed or ''}")
+        if state_summary:
+            header.append(f"- state_summary: {state_summary}")
+        content = "\n".join(header) + "\n\n---\n\n" + (body_text or "(empty)")
+        try:
+            file_path.write_text(content, encoding="utf-8")
+            self.exported_files.append(str(file_path))
+        except Exception as exc:  # noqa: BLE001
+            self.export_warnings.append(f"{filename} 导出失败: {type(exc).__name__}: {exc}")
 
     def _timed_post(self, url: str, payload: dict[str, Any] | None) -> tuple[Any, int]:
         start = time.perf_counter()
@@ -194,6 +244,12 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
             chapter_result["durations"]["generate_draft_duration_ms"] = draft_ms
             self.assertEqual(draft_resp.status_code, 200, msg=f"第{chapter_no}章 generate_draft 失败: {draft_resp.text}")
             draft = draft_resp.json()["data"]
+            self._export_chapter_text(
+                chapter_no=chapter_no,
+                source_type="draft",
+                body_text=self._extract_text_payload(draft),
+                project_id=project_id,
+            )
 
             gate_resp, gate_ms = self._timed_post(
                 "/api/v1/gates/reviews",
@@ -240,6 +296,13 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
             self.assertEqual(publish_data["publish_record"]["publish_status"], "published")
             published_id = publish_data["published_chapter"]["id"]
             chapter_result["published_chapter_id"] = published_id
+            self._export_chapter_text(
+                chapter_no=chapter_no,
+                source_type="published",
+                body_text=self._extract_text_payload(publish_data.get("published_chapter") if isinstance(publish_data, dict) else {}),
+                project_id=project_id,
+                published_chapter_id=published_id,
+            )
 
             summary_resp, summary_ms = self._timed_post(
                 f"/api/v1/chapters/published/{published_id}/summary/generate",
@@ -252,6 +315,22 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
             self.assertTrue(summary.get("next_chapter_seed"))
             chapter_result["summary"] = summary.get("summary")
             chapter_result["next_chapter_seed"] = summary.get("next_chapter_seed")
+            summary_body = "\n\n".join(
+                [
+                    f"summary:\n{summary.get('summary') or ''}",
+                    f"state_summary:\n{summary.get('state_summary') or ''}",
+                    f"next_chapter_seed:\n{summary.get('next_chapter_seed') or ''}",
+                ]
+            )
+            self._export_chapter_text(
+                chapter_no=chapter_no,
+                source_type="summary",
+                body_text=summary_body,
+                project_id=project_id,
+                published_chapter_id=published_id,
+                next_chapter_seed=summary.get("next_chapter_seed"),
+                state_summary=summary.get("state_summary"),
+            )
 
             derived_resp, _ = self._timed_post(
                 f"/api/v1/chapters/published/{published_id}/derived-updates/run",
@@ -366,7 +445,10 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
                 f"- 本章 next_chapter_seed: {failed.get('next_chapter_seed')}\n"
                 f"- 已成功章节摘要: {success_brief}\n"
                 f"- 三章耗时摘要: {[item.get('durations') for item in chapter_results]}\n"
-                f"- 最近 agent 调用摘要:\n{self._diagnostic_recent_calls(failed_calls)}"
+                f"- 最近 agent 调用摘要:\n{self._diagnostic_recent_calls(failed_calls)}\n"
+                f"- 导出目录: {self.export_dir}\n"
+                f"- 已导出文件: {self.exported_files}\n"
+                f"- 导出告警: {self.export_warnings}"
             )
 
         self.assertEqual(len(chapter_results), 3, msg=f"连续章节验收应成功 3 章，实际成功 {len(chapter_results)} 章")
@@ -377,6 +459,12 @@ class RealProviderMultiChapterContinuityTest(unittest.TestCase):
         self.assertEqual([item.get("published_count_after") for item in chapter_results], [1, 2, 3])
         self.assertTrue(all(item.get("degraded_count") == 0 for item in chapter_results), msg=f"存在 degraded 调用：{chapter_results}")
         self.assertTrue(all(item.get("fallback_count") == 0 for item in chapter_results), msg=f"存在 fallback 调用：{chapter_results}")
+        print(f"已导出章节正文到: {self.export_dir}")
+        print(f"导出文件数量: {len(self.exported_files)}")
+        for item in self.exported_files:
+            print(f"- {item}")
+        for warning in self.export_warnings:
+            print(f"⚠️ 导出告警: {warning}")
 
 
 if __name__ == "__main__":
