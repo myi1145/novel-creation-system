@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     publish_require_quality_delta: bool = False
     publish_delta_similarity_threshold: float = Field(default=0.98, ge=0.0, le=1.0)
     publish_delta_min_changed_paragraphs: int = Field(default=1, ge=0, le=100)
+    enable_seed_consumption_gate: bool = True
+    seed_consumption_require_strict: bool = False
+    seed_consumption_min_matched_fragments: int = Field(default=1, ge=1, le=10)
 
     model_config = SettingsConfigDict(
         env_file=".env",

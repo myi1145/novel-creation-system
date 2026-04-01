@@ -72,6 +72,9 @@ class PublishService:
             )
             scope.success(f"草稿已发布，返回既有发布结果（幂等命中）")
             existing_delta_payload = dict(existing_published.publish_metadata or {}).get("quality_delta_report")
+            existing_seed_payload = dict(existing_published.publish_metadata or {}).get("seed_consumption_report")
+            from app.schemas.chapter import SeedConsumptionReport
+
             return PublishResult(
                 success=True,
                 publish_status="published",
@@ -79,6 +82,7 @@ class PublishService:
                 published_chapter=PublishedChapter.model_validate(existing_published),
                 publish_record=PublishRecord.model_validate(existing_record),
                 delta_report=(None if not existing_delta_payload else existing_delta_payload),
+                seed_consumption_report=(None if not existing_seed_payload else SeedConsumptionReport.model_validate(existing_seed_payload)),
                 chapter_summary=chapter_summary,
                 derived_update_result=derived_update_result,
             )
@@ -170,6 +174,7 @@ class PublishService:
             self._ensure_required_gates(db=db, project_id=request.project_id, draft_id=draft.id)
             latest_reviews = self._list_latest_gate_reviews(db=db, project_id=request.project_id, draft_id=draft.id)
             unresolved_critical_issues_count = quality_delta_service.count_unresolved_critical_issues(latest_reviews)
+            narrative_seed_report = self._extract_seed_consumption_report(latest_reviews)
             delta_report = quality_delta_service.evaluate(
                 QualityDeltaContext(
                     draft_text=draft.content or "",
@@ -200,6 +205,7 @@ class PublishService:
                     "workflow_run_id": run.id,
                     "trace_id": run.trace_id,
                     "quality_delta_report": delta_report.model_dump(mode="json"),
+                    "seed_consumption_report": (narrative_seed_report.model_dump(mode="json") if narrative_seed_report is not None else None),
                 },
             )
             db.add(published_chapter)
@@ -278,6 +284,9 @@ class PublishService:
                         "changeset_id": changeset.id,
                         "published_by": request.published_by.strip(),
                         "quality_delta_report": delta_report.model_dump(mode="json"),
+                        "seed_consumption_report": (
+                            narrative_seed_report.model_dump(mode="json") if narrative_seed_report is not None else None
+                        ),
                     },
                 )
             )
@@ -292,6 +301,7 @@ class PublishService:
                 published_chapter=PublishedChapter.model_validate(published_chapter),
                 publish_record=PublishRecord.model_validate(publish_record),
                 delta_report=delta_report,
+                seed_consumption_report=narrative_seed_report,
                 chapter_summary=chapter_summary,
                 derived_update_result=derived_update_result,
             )
@@ -362,6 +372,23 @@ class PublishService:
                 "issues": list(review.issues or []),
             }
         return list(latest_by_gate.values())
+
+    def _extract_seed_consumption_report(self, latest_reviews: list[dict]):
+        from app.schemas.chapter import SeedConsumptionReport
+
+        for review in latest_reviews:
+            if review.get("gate_name") != GateName.NARRATIVE.value:
+                continue
+            for issue in list(review.get("issues") or []):
+                if not isinstance(issue, dict):
+                    continue
+                metadata = issue.get("metadata")
+                if not isinstance(metadata, dict):
+                    continue
+                payload = metadata.get("seed_consumption_report")
+                if isinstance(payload, dict):
+                    return SeedConsumptionReport.model_validate(payload)
+        return None
 
 
 publish_service = PublishService()
