@@ -12,6 +12,7 @@ from app.schemas.gate import GateIssue, GateReviewResult, RunGateReviewRequest
 from app.services.agent_gateway import agent_gateway
 from app.services.chapter_state_service import chapter_state_service
 from app.services.chapter_summary_service import chapter_summary_service
+from app.services.character_voice_service import CharacterVoiceContext, character_voice_service
 from app.services.narrative_rewrite_service import narrative_rewrite_service
 from app.services.rulepack_service import rulepack_service
 from app.services.seed_consumption_service import SeedConsumptionContext, seed_consumption_service
@@ -20,20 +21,24 @@ from app.services.workflow_run_service import workflow_run_service
 
 
 def _to_gate_review_schema(entity: GateReviewORM) -> GateReviewResult:
+    from app.schemas.gate import CharacterVoiceReport
     from app.schemas.chapter import SeedConsumptionReport
 
     seed_report = None
+    voice_report = None
     for issue in list(entity.issues or []):
         metadata = issue.get("metadata") if isinstance(issue, dict) else None
         if isinstance(metadata, dict) and isinstance(metadata.get("seed_consumption_report"), dict):
             seed_report = SeedConsumptionReport.model_validate(metadata.get("seed_consumption_report"))
-            break
+        if isinstance(metadata, dict) and isinstance(metadata.get("character_voice_report"), dict):
+            voice_report = CharacterVoiceReport.model_validate(metadata.get("character_voice_report"))
     return GateReviewResult.model_validate(entity).model_copy(
         update={
             "generated_at": entity.created_at,
             "source_type": "gate_service",
             "source_ref": entity.draft_id,
             "seed_consumption_report": seed_report,
+            "character_voice_report": voice_report,
         }
     )
 
@@ -279,6 +284,45 @@ class GateService:
                     "excerpt": reveal_issue.excerpt,
                 }
                 issues.append(reveal_gate_issue)
+            if settings.enable_character_voice_gate:
+                goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id) if blueprint is not None else None
+                previous_summary = chapter_summary_service.get_latest_project_summary(
+                    db=db,
+                    project_id=draft.project_id,
+                    before_chapter_no=(goal.chapter_no if goal is not None else None),
+                )
+                character_cards = list((latest_snapshot.character_cards if latest_snapshot is not None else []) or [])
+                relationship_edges = list((latest_snapshot.relationship_edges if latest_snapshot is not None else []) or [])
+                voice_report = character_voice_service.evaluate(
+                    CharacterVoiceContext(
+                        chapter_no=(goal.chapter_no if goal is not None else 0),
+                        draft_text=content,
+                        previous_summary=(previous_summary.summary if previous_summary is not None else ""),
+                        character_cards=character_cards,
+                        relationship_edges=relationship_edges,
+                    )
+                )
+                for issue in voice_report.issues:
+                    voice_issue = self._issue(
+                        severity=issue.severity,
+                        message=f"人物声音风险：{issue.issue_type}（{issue.character_name}）",
+                        suggestion=issue.suggested_action,
+                        category=issue.issue_type,
+                        summary=issue.explanation,
+                        evidence_refs=[f"draft:{draft.id}"],
+                    )
+                    voice_issue.metadata["character_voice_issue"] = issue.model_dump(mode="json")
+                    issues.append(voice_issue)
+                report_issue = self._issue(
+                    severity=voice_report.highest_severity,
+                    message=voice_report.summary,
+                    suggestion="按人物卡与关系阶段补充动机桥接、情绪缓冲与个体化表达。",
+                    category="character_voice_report",
+                    summary=voice_report.summary,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                report_issue.metadata["character_voice_report"] = voice_report.model_dump(mode="json")
+                issues.append(report_issue)
         elif gate_name == "style_gate":
             if len(content) < 40:
                 issues.append(self._issue(severity="S2", message="草稿内容过短，无法进行稳定风格判断", suggestion="补充至少一段完整正文", category="style_quality", summary="样本不足", evidence_refs=[f"draft:{draft.id}"]))

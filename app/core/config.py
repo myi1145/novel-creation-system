@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     enable_seed_consumption_gate: bool = True
     seed_consumption_require_strict: bool = False
     seed_consumption_min_matched_fragments: int = Field(default=1, ge=1, le=10)
+    enable_character_voice_gate: bool = True
+    character_voice_gate_strict: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

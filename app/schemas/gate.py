@@ -36,6 +36,25 @@ class GateIssue(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class CharacterVoiceIssue(BaseModel):
+    issue_type: str
+    character_name: str
+    severity: str
+    location_hint: str
+    evidence_excerpt: str
+    explanation: str
+    suggested_action: str
+
+
+class CharacterVoiceReport(BaseModel):
+    chapter_no: int
+    evaluated_characters: list[str] = Field(default_factory=list)
+    issue_count: int = 0
+    highest_severity: str = "S0"
+    issues: list[CharacterVoiceIssue] = Field(default_factory=list)
+    summary: str = ""
+
+
 class GateReviewResult(StructuredCreativeObject):
     object_type: str = "gate_review_result"
     project_id: str
@@ -51,6 +70,7 @@ class GateReviewResult(StructuredCreativeObject):
     override_role: str | None = None
     issues: list[GateIssue] = Field(default_factory=list)
     seed_consumption_report: SeedConsumptionReport | None = None
+    character_voice_report: CharacterVoiceReport | None = None
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
