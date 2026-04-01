@@ -316,11 +316,24 @@ class PublishRecord(StructuredCreativeObject):
         return self
 
 
+class PublishQualityDeltaReport(BaseModel):
+    similarity_score: float
+    changed_char_ratio: float
+    changed_paragraph_count: int
+    changed_sentence_count: int
+    has_meaningful_delta: bool
+    unresolved_critical_issues_count: int
+    fixed_issue_hints: list[str] = Field(default_factory=list)
+    decision: str
+    summary: str
+
+
 class PublishResult(BaseModel):
     success: bool = True
     publish_status: str = "published"
     idempotent_hit: bool = False
     published_chapter: PublishedChapter
     publish_record: PublishRecord
+    delta_report: PublishQualityDeltaReport | None = None
     chapter_summary: ChapterSummary | None = None
     derived_update_result: DerivedUpdateBatchResult | None = None

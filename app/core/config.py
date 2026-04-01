@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     agent_circuit_cooldown_seconds: int = Field(default=60, ge=5, le=3600)
     agent_circuit_half_open_max_calls: int = Field(default=1, ge=1, le=10)
 
+    publish_require_quality_delta: bool = False
+    publish_delta_similarity_threshold: float = Field(default=0.98, ge=0.0, le=1.0)
+    publish_delta_min_changed_paragraphs: int = Field(default=1, ge=0, le=100)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
