@@ -39,6 +39,7 @@ class GateIssue(BaseModel):
 class CharacterVoiceIssue(BaseModel):
     issue_type: str
     character_name: str
+    related_character_name: str | None = None
     severity: str
     location_hint: str
     evidence_excerpt: str
