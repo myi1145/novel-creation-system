@@ -109,6 +109,8 @@ class ChangeSetService:
             },
             "genre_name": project.genre_id or "unknown",
         }
+        rewrite_suggestions = self._extract_rewrite_suggestions_from_gate_issues(db=db, project_id=request.project_id, draft_id=draft.id)
+        context["rewrite_issues"] = rewrite_suggestions
 
         generated_by = "agent"
         provider = None
@@ -150,6 +152,9 @@ class ChangeSetService:
             generated_by = "service"
             provider = "service_fallback"
             model = exc.__class__.__name__
+        if rewrite_suggestions:
+            extracted_changes.append(f"检测到 {len(rewrite_suggestions)} 处“信息揭露过直”，建议先做人审修订。")
+            review_recommendation = "human_review"
 
         proposal = ChangeSetProposal(
             project_id=request.project_id,
@@ -163,6 +168,7 @@ class ChangeSetService:
             extracted_changes=extracted_changes,
             uncertain_items=uncertain_items,
             evidence_refs=evidence_refs,
+            rewrite_suggestions=rewrite_suggestions,
             affected_domains=self._infer_affected_domains(patch_operations),
             review_recommendation=review_recommendation,
             generated_by=generated_by,
@@ -192,6 +198,7 @@ class ChangeSetService:
                     "blueprint_id": blueprint.id,
                     "proposal_summary": proposal.proposal_summary,
                     "patch_count": len(proposal.patch_operations),
+                    "rewrite_suggestion_count": len(proposal.rewrite_suggestions),
                     "review_recommendation": proposal.review_recommendation,
                     "generated_by": proposal.generated_by,
                 },
@@ -707,6 +714,47 @@ class ChangeSetService:
                 }
             ],
         }
+
+    def _extract_rewrite_suggestions_from_gate_issues(self, db: Session, *, project_id: str, draft_id: str) -> list[dict[str, Any]]:
+        reviews = (
+            db.query(GateReviewORM)
+            .filter(
+                GateReviewORM.project_id == project_id,
+                GateReviewORM.draft_id == draft_id,
+                GateReviewORM.gate_name == GateName.NARRATIVE.value,
+            )
+            .order_by(GateReviewORM.created_at.desc())
+            .all()
+        )
+        if not reviews:
+            return []
+        latest = reviews[0]
+        suggestions: list[dict[str, Any]] = []
+        for issue in list(latest.issues or []):
+            if not isinstance(issue, dict):
+                continue
+            metadata = issue.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            rewrite_issue = metadata.get("rewrite_issue")
+            if not isinstance(rewrite_issue, dict):
+                continue
+            if rewrite_issue.get("issue_type") != "over_explained_reveal":
+                continue
+            excerpt = str(rewrite_issue.get("excerpt") or "")
+            suggestions.append(
+                {
+                    "rewrite_issue_type": "over_explained_reveal",
+                    "target_excerpt": excerpt,
+                    "target_location": str(rewrite_issue.get("location_hint") or "unknown"),
+                    "rewrite_goal": "把一次性解释改为行动、反应与留白，不改变事实方向。",
+                    "rewrite_strategy": str(rewrite_issue.get("suggested_rewrite_strategy") or "删减直白解释并拆分信息点。"),
+                    "expected_effect": "降低信息灌输感，保留悬念并提高叙事张力。",
+                    "preserve_facts": [str(rewrite_issue.get("explanation") or "保留原设定事实，不改结论方向。")],
+                    "avoid_patterns": ["其实", "原来", "也就是说", "真相是", "意味着", "说明", "证明"],
+                }
+            )
+        return suggestions[:3]
 
     def _validate_patch_operations(self, patch_operations: list[dict[str, Any]]) -> None:
         if not patch_operations:

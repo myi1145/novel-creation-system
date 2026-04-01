@@ -328,6 +328,18 @@ class PublishQualityDeltaReport(BaseModel):
     summary: str
 
 
+class SeedConsumptionReport(BaseModel):
+    chapter_no: int
+    has_previous_seed: bool
+    previous_seed_excerpt: str | None = None
+    matched_seed_fragments_count: int
+    matched_seed_fragments: list[str] = Field(default_factory=list)
+    consumed_signals_count: int
+    unresolved_seed_points_count: int
+    decision: str
+    summary: str
+
+
 class PublishResult(BaseModel):
     success: bool = True
     publish_status: str = "published"
@@ -335,5 +347,6 @@ class PublishResult(BaseModel):
     published_chapter: PublishedChapter
     publish_record: PublishRecord
     delta_report: PublishQualityDeltaReport | None = None
+    seed_consumption_report: SeedConsumptionReport | None = None
     chapter_summary: ChapterSummary | None = None
     derived_update_result: DerivedUpdateBatchResult | None = None
