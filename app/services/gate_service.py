@@ -12,6 +12,7 @@ from app.schemas.gate import GateIssue, GateReviewResult, RunGateReviewRequest
 from app.services.agent_gateway import agent_gateway
 from app.services.chapter_state_service import chapter_state_service
 from app.services.chapter_summary_service import chapter_summary_service
+from app.services.narrative_rewrite_service import narrative_rewrite_service
 from app.services.rulepack_service import rulepack_service
 from app.services.seed_consumption_service import SeedConsumptionContext, seed_consumption_service
 from app.services.workflow_run_service import workflow_run_service
@@ -260,6 +261,24 @@ class GateService:
                 )
                 seed_issue.metadata["seed_consumption_report"] = seed_report.model_dump(mode="json")
                 issues.append(seed_issue)
+            for reveal_issue in narrative_rewrite_service.detect_over_explained_reveal(content):
+                reveal_gate_issue = self._issue(
+                    severity=reveal_issue.severity,
+                    message=f"检测到信息揭露过直：{reveal_issue.location_hint}",
+                    suggestion="改为“行动 + 反应 + 留白”表达，避免一次性讲满设定真相。",
+                    category="over_explained_reveal",
+                    summary=reveal_issue.explanation,
+                    evidence_refs=[f"draft:{draft.id}"],
+                )
+                reveal_gate_issue.metadata["rewrite_issue"] = {
+                    "issue_type": reveal_issue.issue_type,
+                    "location_hint": reveal_issue.location_hint,
+                    "severity": reveal_issue.severity,
+                    "explanation": reveal_issue.explanation,
+                    "suggested_rewrite_strategy": reveal_issue.suggested_rewrite_strategy,
+                    "excerpt": reveal_issue.excerpt,
+                }
+                issues.append(reveal_gate_issue)
         elif gate_name == "style_gate":
             if len(content) < 40:
                 issues.append(self._issue(severity="S2", message="草稿内容过短，无法进行稳定风格判断", suggestion="补充至少一段完整正文", category="style_quality", summary="样本不足", evidence_refs=[f"draft:{draft.id}"]))
