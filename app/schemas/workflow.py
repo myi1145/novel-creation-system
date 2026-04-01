@@ -258,6 +258,7 @@ class ExecuteChapterSequenceResult(BaseModel):
     completed_chapter_count: int = 0
     failed_chapter_count: int = 0
     attention_chapter_count: int = 0
+    revised_chapter_count: int = 0
     requested_chapter_count: int = 0
     stopped_at_chapter_no: int | None = None
     summary_message: str | None = None

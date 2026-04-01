@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime, timezone
+import json
 
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -86,6 +87,8 @@ class WorkflowStatusResponse(BaseModel):
 
 
 class WorkflowService:
+    _AUTO_REVISION_FIXABLE_GATES = {GateName.NARRATIVE.value, GateName.STYLE.value, GateName.VOICE.value}
+
     def _get_existing_goal(self, db: Session, project_id: str, chapter_no: int) -> ChapterGoalORM | None:
         return (
             db.query(ChapterGoalORM)
@@ -838,6 +841,53 @@ class WorkflowService:
         )
         return [GateReviewResult.model_validate(row) for row in rows]
 
+    def _is_fixable_gate_failure(self, review: GateReviewResult) -> bool:
+        if review.gate_name not in self._AUTO_REVISION_FIXABLE_GATES:
+            return False
+        highest_severity = (review.highest_severity or "").upper()
+        return highest_severity != "S3"
+
+    def _build_revision_task(self, *, draft: ChapterDraft, failed_reviews: list[GateReviewResult], next_attempt_no: int) -> dict:
+        actionable_issues: list[dict] = []
+        rewrite_hints: list[dict] = []
+        severity_counter: Counter = Counter()
+        for review in failed_reviews:
+            for issue in list(review.issues or []):
+                if not isinstance(issue, dict):
+                    continue
+                severity = str(issue.get("severity") or "S1").upper()
+                severity_counter[severity] += 1
+                actionable_issues.append(
+                    {
+                        "gate_name": review.gate_name,
+                        "severity": severity,
+                        "category": issue.get("category"),
+                        "message": issue.get("message"),
+                        "summary": issue.get("summary"),
+                        "suggestion": issue.get("suggestion"),
+                    }
+                )
+                metadata = issue.get("metadata") if isinstance(issue.get("metadata"), dict) else {}
+                for key in ("rewrite_issue", "seed_consumption_report", "character_voice_issue", "character_voice_report", "style_issue", "style_report"):
+                    hint = metadata.get(key)
+                    if hint is not None:
+                        rewrite_hints.append({"gate_name": review.gate_name, "hint_type": key, "payload": hint})
+
+        severity_summary = dict(sorted(severity_counter.items(), key=lambda item: item[0]))
+        return {
+            "source_gate_names": sorted({review.gate_name for review in failed_reviews}),
+            "severity_summary": severity_summary,
+            "actionable_issues": actionable_issues[:40],
+            "rewrite_hints": rewrite_hints[:20],
+            "must_preserve_facts": [
+                "保持已发布章节事实与 Canon 一致",
+                "不改写既有人物身份与关系结论",
+                "不删除本章核心情节目标",
+            ],
+            "next_attempt_no": next_attempt_no,
+            "source_draft_id": draft.id,
+        }
+
     def _record_cycle_state(self, db: Session, run: WorkflowRunORM, *, extra_metadata: dict | None = None) -> WorkflowRunORM:
         return workflow_run_service.update_progress(
             db=db,
@@ -1039,52 +1089,110 @@ class WorkflowService:
             result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or draft
             if any(item.pass_status == "failed" for item in gate_results):
                 if request.auto_revise_on_gate_failure:
-                    current_revision_no = int((result.draft.metadata or {}).get("revision_no") or 1)
-                    if current_revision_no - 1 >= request.max_revision_rounds:
-                        result.run = WorkflowRun.model_validate(run)
-                        result.stage_status = "attention_required"
-                        result.next_action = "review_revision_limit"
-                        return result.model_dump(mode="json")
-                    revised_draft = chapter_service.revise_draft(
-                        db=db,
-                        request=ReviseDraftRequest(
-                            project_id=request.project_id,
-                            draft_id=draft.id,
-                            revision_instruction=request.revision_instruction,
-                            source_gate_review_ids=[item.id for item in gate_results if item.pass_status == "failed"],
-                            revised_by=request.revised_by,
-                            workflow_run_id=run.id,
-                            trace_id=run.trace_id,
-                        ),
-                    )
-                    run = db.get(WorkflowRunORM, run.id) or run
-                    result.draft = revised_draft
-                    result.gate_results = gate_results
-                    rerun_results = gate_service.run_reviews(
-                        db=db,
-                        request=RunGateReviewRequest(
-                            project_id=request.project_id,
-                            draft_id=revised_draft.id,
-                            gate_names=request.review_gate_names,
-                            workflow_run_id=run.id,
-                            trace_id=run.trace_id,
-                        ),
-                    )
-                    run = db.get(WorkflowRunORM, run.id) or run
-                    result.gate_results = rerun_results
-                    result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft
-                    if any(item.pass_status == "failed" for item in rerun_results):
+                    failed_gate_reviews = [item for item in gate_results if item.pass_status == "failed"]
+                    if not failed_gate_reviews:
+                        pass
+                    elif any(not self._is_fixable_gate_failure(item) for item in failed_gate_reviews):
                         return self._stop_cycle_for_manual_action(
                             db=db,
                             run=run,
                             result=result,
-                            current_step="review_revised_draft_required",
-                            reason="修订后 Gate 仍未通过，需要人工审阅修订结果",
-                            next_action="review_revised_draft",
-                            extra_metadata={"draft_id": result.draft.id if result.draft else revised_draft.id},
+                            current_step="hard_gate_failure_manual_review",
+                            reason="检测到不可自动修订的 Gate 失败，需人工处理",
+                            next_action="revise_draft",
+                            extra_metadata={
+                                "draft_id": result.draft.id if result.draft else draft.id,
+                                "auto_revised": False,
+                                "revision_attempt_count": 0,
+                                "gate_failures_before_revision": len(failed_gate_reviews),
+                                "gate_failures_after_revision": len(failed_gate_reviews),
+                            },
                         )
-                    gate_results = rerun_results
-                    draft = result.draft
+                    else:
+                        current_revision_no = int((result.draft.metadata or {}).get("revision_no") or 1)
+                        if current_revision_no - 1 >= request.max_revision_rounds:
+                            result.run = WorkflowRun.model_validate(run)
+                            result.stage_status = "attention_required"
+                            result.next_action = "review_revision_limit"
+                            return result.model_dump(mode="json")
+                        attempt_count = 0
+                        before_fail_count = len(failed_gate_reviews)
+                        after_fail_count = before_fail_count
+                        revised_draft: ChapterDraft | None = None
+                        last_results = gate_results
+                        while attempt_count < request.max_revision_rounds:
+                            attempt_count += 1
+                            revision_task = self._build_revision_task(draft=draft, failed_reviews=failed_gate_reviews, next_attempt_no=attempt_count)
+                            revision_instruction_payload = request.revision_instruction or json.dumps(
+                                {"task_type": "auto_gate_revision", "revision_task": revision_task},
+                                ensure_ascii=False,
+                            )
+                            revised_draft = chapter_service.revise_draft(
+                                db=db,
+                                request=ReviseDraftRequest(
+                                    project_id=request.project_id,
+                                    draft_id=draft.id,
+                                    revision_instruction=revision_instruction_payload,
+                                    source_gate_review_ids=[item.id for item in failed_gate_reviews],
+                                    revised_by=request.revised_by,
+                                    workflow_run_id=run.id,
+                                    trace_id=run.trace_id,
+                                ),
+                            )
+                            run = db.get(WorkflowRunORM, run.id) or run
+                            last_results = gate_service.run_reviews(
+                                db=db,
+                                request=RunGateReviewRequest(
+                                    project_id=request.project_id,
+                                    draft_id=revised_draft.id,
+                                    gate_names=request.review_gate_names,
+                                    workflow_run_id=run.id,
+                                    trace_id=run.trace_id,
+                                ),
+                            )
+                            run = db.get(WorkflowRunORM, run.id) or run
+                            after_fail_count = sum(1 for item in last_results if item.pass_status == "failed")
+                            run = self._record_cycle_state(
+                                db=db,
+                                run=run,
+                                extra_metadata={
+                                    "revision_attempt_count": attempt_count,
+                                    "auto_revised": True,
+                                    "revision_task": revision_task,
+                                    "gate_failures_before_revision": before_fail_count,
+                                    "gate_failures_after_revision": after_fail_count,
+                                    "revised_draft_id": revised_draft.id,
+                                },
+                            )
+                            if after_fail_count == 0:
+                                result.draft = revised_draft
+                                result.gate_results = last_results
+                                gate_results = last_results
+                                draft = revised_draft
+                                break
+                            failed_gate_reviews = [item for item in last_results if item.pass_status == "failed"]
+                            if any(not self._is_fixable_gate_failure(item) for item in failed_gate_reviews):
+                                break
+                            draft = revised_draft
+                        if after_fail_count > 0:
+                            result.gate_results = last_results
+                            result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft or draft
+                            return self._stop_cycle_for_manual_action(
+                                db=db,
+                                run=run,
+                                result=result,
+                                current_step="review_revised_draft_required",
+                                reason="自动修订后 Gate 仍未通过，需要人工审阅修订结果",
+                                next_action="review_revised_draft",
+                                extra_metadata={
+                                    "draft_id": result.draft.id if result.draft else (revised_draft.id if revised_draft else draft.id),
+                                    "revision_attempt_count": attempt_count,
+                                    "auto_revised": True,
+                                    "gate_failures_before_revision": before_fail_count,
+                                    "gate_failures_after_revision": after_fail_count,
+                                    "revised_draft_id": (revised_draft.id if revised_draft else None),
+                                },
+                            )
                 else:
                     return self._stop_cycle_for_manual_action(
                         db=db,
@@ -1632,6 +1740,11 @@ class WorkflowService:
             completed_chapter_count=sum(1 for item in chapter_results if item.stage_status == "completed"),
             failed_chapter_count=sum(1 for item in chapter_results if item.stage_status == "failed"),
             attention_chapter_count=sum(1 for item in chapter_results if item.stage_status == "attention_required"),
+            revised_chapter_count=sum(
+                1
+                for item in chapter_results
+                if bool((item.chapter_result.run.run_metadata or {}).get("auto_revised"))
+            ),
             requested_chapter_count=request.chapter_count,
             stopped_at_chapter_no=stopped_at_chapter_no,
             summary_message=(
