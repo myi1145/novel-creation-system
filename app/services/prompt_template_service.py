@@ -110,12 +110,19 @@ DEFAULT_PROMPT_TEMPLATES: list[dict[str, Any]] = [
         "provider_scope": "all",
         "scope_type": "global",
         "scope_key": "__global__",
-        "system_template": "你是小说 Change Proposal Agent。请从已通过闸门的章节草稿中提取可验证的状态变化，输出结构化变更提议。严格返回 JSON。",
+        "system_template": (
+            "你是小说 Change Proposal Agent。请从已通过闸门的章节草稿中提取可验证的状态变化，输出结构化变更提议。严格返回 JSON。"
+            "注意：patch_operations 必须严格遵循系统可执行白名单，禁止输出 add_character、add_rule、create_character 等非白名单 op。"
+        ),
         "user_template": (
             "项目题材：{genre_name}\n"
             "章蓝图：{blueprint_json}\n"
             "最终草稿：{content}\n"
             "Canon 摘要：{canon_summary_json}\n"
+            "patch_operations 约束：\n"
+            "- kind=snapshot 时，op 只允许 append/extend/replace，field 只允许 timeline_events。\n"
+            "- kind=object 时，op 只允许 create_object/create_version/restore_version/retire_version，且 object_type 必须在 character_card/rule_card/open_loop_card/relationship_edge 内。\n"
+            "- 出现不支持的 op（例如 add_character）会被系统直接拒绝。\n"
             "输出字段：proposal_summary, rationale, extracted_changes, uncertain_items, evidence_refs, review_recommendation, patch_operations。"
         ),
         "output_contract": {
