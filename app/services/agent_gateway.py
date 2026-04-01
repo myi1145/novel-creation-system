@@ -22,12 +22,22 @@ class AgentGatewayError(RuntimeError):
 
 
 class AgentProviderRequestError(AgentGatewayError):
-    def __init__(self, message: str, *, error_type: str, retryable: bool, status_code: int | None = None, attempt_count: int = 1) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str,
+        retryable: bool,
+        status_code: int | None = None,
+        attempt_count: int = 1,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.error_type = error_type
         self.retryable = retryable
         self.status_code = status_code
         self.attempt_count = attempt_count
+        self.details = details or {}
 
 
 class AgentStructuredOutputError(AgentGatewayError):
@@ -352,6 +362,15 @@ class OpenAICompatibleProvider:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         payload = {"model": self.model, "messages": messages, "temperature": self.temperature}
+        request_meta = {
+            "provider_name": self.name,
+            "endpoint": url,
+            "model": self.model,
+            "message_count": len(messages),
+            "system_prompt_length": len(str(messages[0].get("content") or "")) if messages else 0,
+            "user_prompt_length": len(str(messages[-1].get("content") or "")) if messages else 0,
+            "temperature": self.temperature,
+        }
         try:
             with httpx.Client(timeout=self.timeout_seconds) as client:
                 response = client.post(url, headers=headers, json=payload)
@@ -362,16 +381,52 @@ class OpenAICompatibleProvider:
             status_code = exc.response.status_code
             error_type = "http_5xx" if status_code >= 500 else "http_4xx"
             retryable = status_code in settings.agent_retryable_status_codes
+            provider_response_body: Any
+            try:
+                provider_response_body = exc.response.json()
+            except Exception:  # noqa: BLE001
+                provider_response_body = exc.response.text
+            provider_response_body = _summarize(provider_response_body)
+            details = {
+                **request_meta,
+                "status_code": status_code,
+                "retryable": retryable,
+                "provider_status_code": status_code,
+                "provider_error_body": provider_response_body,
+            }
             raise AgentProviderRequestError(
-                f"provider HTTP 错误: {status_code}",
+                f"provider HTTP 错误: {status_code}; provider_response_body={provider_response_body}; request_meta={details}",
                 error_type=error_type,
                 retryable=retryable,
                 status_code=status_code,
+                details=details,
             ) from exc
         except (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError) as exc:
             raise AgentProviderRequestError(f"Provider 网络错误: {exc}", error_type="network", retryable=True) from exc
         except Exception as exc:  # noqa: BLE001
-            raise AgentProviderRequestError(f"调用 openai_compatible provider 失败: {exc}", error_type="provider_error", retryable=False) from exc
+            status_code = None
+            provider_response_body: Any = None
+            response_obj = getattr(exc, "response", None)
+            if response_obj is not None:
+                status_code = getattr(response_obj, "status_code", None)
+                try:
+                    provider_response_body = response_obj.json()
+                except Exception:  # noqa: BLE001
+                    provider_response_body = getattr(response_obj, "text", None)
+            details = {
+                **request_meta,
+                "status_code": status_code,
+                "provider_status_code": status_code,
+                "retryable": False,
+                "provider_error_body": _summarize(provider_response_body),
+            }
+            raise AgentProviderRequestError(
+                f"调用 openai_compatible provider 失败: {exc}; provider_response_body={details['provider_error_body']}; request_meta={details}",
+                error_type="provider_error",
+                retryable=False,
+                status_code=status_code,
+                details=details,
+            ) from exc
 
         try:
             data = response.json()
@@ -418,6 +473,10 @@ STRUCTURED_OUTPUT_SPECS: dict[str, dict[str, Any]] = {
     "propose_changeset": {"output_type": "ChangeProposalDraft", "expected_root": "object"},
     "summarize_chapter": {"output_type": "ChapterSummary", "expected_root": "object"},
 }
+_CHANGESET_ALLOWED_SNAPSHOT_OPS = {"append", "extend", "replace"}
+_CHANGESET_ALLOWED_OBJECT_OPS = {"create_object", "create_version", "restore_version", "retire_version"}
+_CHANGESET_ALLOWED_OBJECT_TYPES = {"character_card", "rule_card", "open_loop_card", "relationship_edge"}
+_CHANGESET_ALLOWED_SNAPSHOT_FIELDS = {"timeline_events"}
 
 
 def _build_parse_issue(code: str, severity: str, level: str, message: str, field_path: str | None = None) -> dict[str, Any]:
@@ -493,12 +552,16 @@ def _normalize_changeset_proposal(data: dict[str, Any], *, provider: str, model:
     patch_operations = []
     for item in list(data.get("patch_operations") or []):
         if isinstance(item, dict):
-            patch_operations.append({
+            normalized_item: dict[str, Any] = {
                 "kind": str(item.get("kind") or "snapshot"),
                 "op": str(item.get("op") or "append"),
                 "field": str(item.get("field") or "timeline_events"),
                 "value": item.get("value"),
-            })
+            }
+            for key in ("path", "object_type", "logical_object_id", "version_ref", "expected_version_no", "bind_to_canon"):
+                if key in item:
+                    normalized_item[key] = item.get(key)
+            patch_operations.append(normalized_item)
     excerpt = str(data.get("excerpt") or str(context.get("content") or "")[:180]).strip()
     return {
         "proposal_summary": str(data.get("proposal_summary") or "已生成 ChangeSet 提议。"),
@@ -689,6 +752,34 @@ class AgentGateway:
             normalized = _normalize_changeset_proposal(business_payload, provider=provider_name, model=model_name, context=context)
             decision = "accepted"
             route = "continue"
+            unsupported_ops: set[str] = set()
+            unsupported_object_types: set[str] = set()
+            unsupported_snapshot_fields: set[str] = set()
+            for item in list(normalized.get("patch_operations") or []):
+                kind = str(item.get("kind") or "snapshot").lower()
+                op = str(item.get("op") or "").lower()
+                if kind == "snapshot":
+                    if op not in _CHANGESET_ALLOWED_SNAPSHOT_OPS:
+                        unsupported_ops.add(op or "<empty>")
+                    field = str(item.get("field") or item.get("path") or "")
+                    if field not in _CHANGESET_ALLOWED_SNAPSHOT_FIELDS:
+                        unsupported_snapshot_fields.add(field or "<empty>")
+                elif kind == "object":
+                    if op not in _CHANGESET_ALLOWED_OBJECT_OPS:
+                        unsupported_ops.add(op or "<empty>")
+                    object_type = str(item.get("object_type") or "")
+                    if object_type and object_type not in _CHANGESET_ALLOWED_OBJECT_TYPES:
+                        unsupported_object_types.add(object_type)
+                else:
+                    unsupported_ops.add(op or f"kind:{kind}")
+            if unsupported_ops or unsupported_object_types or unsupported_snapshot_fields:
+                issues.append(_build_parse_issue("E005", "P1", "L2", "ChangeSet patch_operations 含非白名单 op/object_type/field"))
+                report = _build_parse_report(method_name, decision="reask", route="reask", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+                report["unsupported_ops"] = sorted(unsupported_ops)
+                report["unsupported_object_types"] = sorted(unsupported_object_types)
+                report["unsupported_snapshot_fields"] = sorted(unsupported_snapshot_fields)
+                report["supported_ops"] = sorted(_CHANGESET_ALLOWED_SNAPSHOT_OPS | _CHANGESET_ALLOWED_OBJECT_OPS)
+                raise AgentStructuredOutputError("ChangeSet patch_operations 包含不支持操作", error_code="parse_e005", severity="P1", decision="reask", parse_report=report)
             if not normalized.get("patch_operations"):
                 issues.append(_build_parse_issue("E003", "P1", "L2", "ChangeSet 提议缺少 patch_operations，已转人工审阅", "patch_operations"))
                 normalized["review_recommendation"] = "human_review"
@@ -794,6 +885,7 @@ class AgentGateway:
         fallback_used = False
         error_message: str | None = None
         error_type: str | None = None
+        provider_error_details: dict[str, Any] | None = None
         call_status = "success"
         active_provider = provider.name
         model_name = self._resolve_model_name(provider)
@@ -839,6 +931,7 @@ class AgentGateway:
         except AgentProviderRequestError as exc:
             error_message = str(exc)
             error_type = exc.error_type
+            provider_error_details = _summarize(getattr(exc, "details", {}) or {})
             attempt_count = max(attempt_count, getattr(exc, "attempt_count", 1))
             provider_governance_service.record_failure(db=db, provider_name=provider.name, error_type=error_type, error_message=error_message)
             if provider.name != "mock" and settings.agent_fallback_to_mock:
@@ -856,7 +949,7 @@ class AgentGateway:
                     parse_report.setdefault("repair_actions", []).append("provider_fallback_to_mock")
             else:
                 latency_ms = int((time.perf_counter() - start) * 1000)
-                self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary={"parse_report": parse_report} if parse_report else {}, source_metadata=_summarize(audit_context), error_message=error_message)
+                self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary=self._build_error_response_summary(parse_report=parse_report, provider_error_details=provider_error_details), source_metadata=_summarize(audit_context), error_message=error_message)
                 raise
         except Exception as exc:  # noqa: BLE001
             error_message = str(exc)
@@ -878,7 +971,7 @@ class AgentGateway:
                     parse_report.setdefault("repair_actions", []).append("provider_fallback_to_mock")
             else:
                 latency_ms = int((time.perf_counter() - start) * 1000)
-                self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary={"parse_report": parse_report} if parse_report else {}, source_metadata=_summarize(audit_context), error_message=error_message)
+                self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=False, call_status="error", attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=False, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary=self._build_error_response_summary(parse_report=parse_report, provider_error_details=provider_error_details), source_metadata=_summarize(audit_context), error_message=error_message)
                 raise
 
         latency_ms = int((time.perf_counter() - start) * 1000)
@@ -887,6 +980,8 @@ class AgentGateway:
             response_summary["parse_report"] = _summarize(parse_report)
         elif parse_report is not None:
             response_summary = {"value": response_summary, "parse_report": _summarize(parse_report)}
+        if isinstance(response_summary, dict) and provider_error_details:
+            response_summary["provider_error_details"] = _summarize(provider_error_details)
         self._record_call(db=db, project_id=str(audit_context.get("project_id") or context.get("project_id") or ""), workflow_name=audit_context.get("workflow_name"), workflow_run_id=audit_context.get("workflow_run_id"), trace_id=audit_context.get("trace_id"), agent_type=agent_type, action_name=action_name, configured_provider=configured_provider, active_provider=active_provider, model_name=model_name, prompt_resolution=prompt_resolution, fallback_used=fallback_used, call_status=call_status, attempt_count=attempt_count, error_type=error_type, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, latency_ms=latency_ms, request_summary=_summarize({"context": enriched_context, "system_prompt": prompt_resolution.system_prompt, "user_prompt": prompt_resolution.user_prompt}), response_summary=response_summary, source_metadata=_summarize(audit_context), error_message=error_message)
         return AgentInvocationResult(payload=payload, configured_provider=configured_provider, active_provider=active_provider, model=model_name, prompt_template_id=prompt_resolution.template_id, prompt_template_key=prompt_resolution.template_key, prompt_template_version=prompt_resolution.template_version, prompt_scope_type=prompt_resolution.scope_type, prompt_scope_key=prompt_resolution.scope_key, prompt_provider_scope=prompt_resolution.provider_scope, fallback_used=fallback_used, call_status=call_status, latency_ms=latency_ms, attempt_count=attempt_count, error_type=error_type, error_message=error_message, circuit_state_at_call=circuit_state_at_call, rate_limited=rate_limited, parse_report=parse_report)
 
@@ -914,6 +1009,14 @@ class AgentGateway:
                     raise
                 sleep_seconds = (settings.agent_retry_backoff_ms / 1000.0) * (settings.agent_retry_backoff_multiplier ** (attempt - 1))
                 time.sleep(min(sleep_seconds, 10.0))
+
+    def _build_error_response_summary(self, parse_report: dict[str, Any] | None, provider_error_details: dict[str, Any] | None) -> dict[str, Any]:
+        summary: dict[str, Any] = {}
+        if parse_report:
+            summary["parse_report"] = _summarize(parse_report)
+        if provider_error_details:
+            summary["provider_error_details"] = _summarize(provider_error_details)
+        return summary
 
     def _record_call(self, db: Session | None, project_id: str, workflow_name: str | None, workflow_run_id: str | None, trace_id: str | None, agent_type: str, action_name: str, configured_provider: str, active_provider: str, model_name: str, prompt_resolution: PromptTemplateResolution, fallback_used: bool, call_status: str, attempt_count: int, error_type: str | None, circuit_state_at_call: str | None, rate_limited: bool, latency_ms: int, request_summary: Any, response_summary: Any, source_metadata: Any, error_message: str | None) -> None:
         if db is None or not project_id:
