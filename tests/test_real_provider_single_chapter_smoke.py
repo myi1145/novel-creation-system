@@ -46,15 +46,34 @@ class RealProviderSingleChapterSmokeTest(unittest.TestCase):
         for item in agent_calls[:limit]:
             response_summary = item.get("response_summary") if isinstance(item.get("response_summary"), dict) else {}
             parse_report = response_summary.get("parse_report") if isinstance(response_summary, dict) else None
+            provider_error_details = response_summary.get("provider_error_details") if isinstance(response_summary, dict) else None
+            provider_status_code = None
+            provider_error_body = None
+            provider_model = item.get("model_name")
+            message_count = None
+            system_prompt_length = None
+            user_prompt_length = None
+            if isinstance(provider_error_details, dict):
+                provider_status_code = provider_error_details.get("provider_status_code") or provider_error_details.get("status_code")
+                provider_error_body = provider_error_details.get("provider_error_body")
+                provider_model = provider_error_details.get("model") or provider_model
+                message_count = provider_error_details.get("message_count")
+                system_prompt_length = provider_error_details.get("system_prompt_length")
+                user_prompt_length = provider_error_details.get("user_prompt_length")
             lines.append(
                 (
                     f"action={item.get('action_name')} "
                     f"configured={item.get('configured_provider')} "
                     f"active={item.get('active_provider')} "
-                    f"model={item.get('model_name')} "
+                    f"model={provider_model} "
                     f"status={item.get('call_status')} "
                     f"fallback_used={item.get('fallback_used')} "
                     f"error_type={item.get('error_type')} "
+                    f"provider_status_code={provider_status_code} "
+                    f"message_count={message_count} "
+                    f"system_prompt_length={system_prompt_length} "
+                    f"user_prompt_length={user_prompt_length} "
+                    f"provider_error_body={provider_error_body} "
                     f"parse_report={parse_report}"
                 )
             )
@@ -84,6 +103,24 @@ class RealProviderSingleChapterSmokeTest(unittest.TestCase):
                 "- 本测试禁止 fallback/mock 自动降级，请先修复环境配置后重试。"
             )
         return data
+
+    def _extract_provider_error_snapshot(self, agent_calls: list[dict[str, Any]]) -> dict[str, Any]:
+        for item in agent_calls:
+            response_summary = item.get("response_summary") if isinstance(item.get("response_summary"), dict) else {}
+            details = response_summary.get("provider_error_details") if isinstance(response_summary, dict) else None
+            if isinstance(details, dict):
+                return {
+                    "action_name": item.get("action_name"),
+                    "active_provider": item.get("active_provider"),
+                    "model": details.get("model") or item.get("model_name"),
+                    "provider_status_code": details.get("provider_status_code") or details.get("status_code"),
+                    "message_count": details.get("message_count"),
+                    "system_prompt_length": details.get("system_prompt_length"),
+                    "user_prompt_length": details.get("user_prompt_length"),
+                    "retryable": details.get("retryable"),
+                    "provider_error_body": details.get("provider_error_body"),
+                }
+        return {}
 
     def test_real_provider_single_chapter_smoke(self):
         gateway_status = self._assert_gateway_preflight()
@@ -222,12 +259,16 @@ class RealProviderSingleChapterSmokeTest(unittest.TestCase):
             status_data = status_resp.json().get("data") if status_resp.status_code == 200 else {"status_code": status_resp.status_code}
             calls_resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": 20})
             recent_calls = calls_resp.json().get("data", []) if calls_resp.status_code == 200 else []
+            provider_error_snapshot = self._extract_provider_error_snapshot(recent_calls)
+            exc_details = getattr(exc, "details", {}) if isinstance(getattr(exc, "details", {}), dict) else {}
             self.fail(
                 "真实 provider 冒烟链路执行失败，请排查以下诊断信息：\n"
                 f"- 异常类型: {type(exc).__name__}\n"
                 f"- 异常信息: {exc}\n"
+                f"- 异常 details: {exc_details}\n"
                 f"- gateway_status(执行前): {gateway_status}\n"
                 f"- gateway_status(失败时): {status_data}\n"
+                f"- provider 错误快照: {provider_error_snapshot}\n"
                 f"- 最近 agent 调用:\n{self._diagnostic_recent_calls(recent_calls)}"
             )
 
