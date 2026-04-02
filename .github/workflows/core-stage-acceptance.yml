@@ -1,0 +1,47 @@
+name: Core Stage Acceptance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core-stage-acceptance:
+    name: core stage acceptance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 执行 core 阶段验收
+        run: python tests/run_stage_acceptance.py --suite core
+
+      - name: 检查阶段摘要文件
+        if: always()
+        run: |
+          shopt -s nullglob
+          files=(output/stage_acceptance_summary_core_*.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::未找到 core 阶段验收摘要文件（output/stage_acceptance_summary_core_*.json）。"
+          else
+            echo "找到 ${#files[@]} 个 core 阶段验收摘要文件："
+            printf '%s\n' "${files[@]}"
+          fi
+
+      - name: 上传 core 阶段验收摘要
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-stage-acceptance-summary
+          path: output/stage_acceptance_summary_core_*.json
+          if-no-files-found: warn
