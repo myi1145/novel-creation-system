@@ -43,9 +43,9 @@ jobs:
 
       - name: 检查阶段验收输出文件
         if: always()
+        shell: bash
         run: |
           shopt -s nullglob
-          shell: bash
           summary_files=(output/stage_acceptance_summary_${{ inputs.suite }}_*.json)
           output_files=(output/*)
           if [ ${#summary_files[@]} -eq 0 ]; then
