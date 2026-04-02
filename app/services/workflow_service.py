@@ -330,22 +330,34 @@ class WorkflowService:
             if published_row is None and run_published:
                 published_row = sorted(run_published, key=lambda row: row.created_at, reverse=True)[0]
             published_metadata = dict((published_row.publish_metadata if published_row is not None else {}) or {})
-            continuity_applied = bool(((child_run.run_metadata or {}) if child_run is not None else {}).get("continuity_pack"))
+            run_metadata = dict(child_run.run_metadata or {}) if child_run is not None else {}
+            continuity_applied = bool(run_metadata.get("continuity_pack"))
             summary_generated = bool(published_metadata.get("chapter_summary"))
             derived_update_status = published_metadata.get("derived_update_status")
+            revision_policy_decision = run_metadata.get("revision_policy_decision")
+            revision_policy_reason = run_metadata.get("revision_policy_reason")
+            no_improvement_reason = run_metadata.get("no_improvement_reason")
+            revision_text_changed = run_metadata.get("revision_text_changed")
+            revision_attempt_count = run_metadata.get("revision_attempt_count")
+            quality_delta_report = published_metadata.get("quality_delta_report") if isinstance(published_metadata.get("quality_delta_report"), dict) else {}
+            quality_delta_decision = quality_delta_report.get("decision")
+            delta_baseline_source = published_metadata.get("delta_baseline_source")
             notes: list[str] = []
             if failed_gate_names:
                 notes.append(f"失败 Gate：{', '.join(failed_gate_names)}")
             if failed_agent_calls:
                 notes.append(f"Agent 调用失败 {len(failed_agent_calls)} 次")
             if child_run is not None:
-                run_metadata = dict(child_run.run_metadata or {})
                 if run_metadata.get("attention_reason"):
                     notes.append(run_metadata["attention_reason"])
                 if run_metadata.get("failure_reason"):
                     notes.append(run_metadata["failure_reason"])
                 if child_run.status in {"manual_review", "paused"}:
                     notes.append(f"工作流当前处于 {child_run.status}")
+            if revision_policy_reason:
+                notes.append(f"修订策略原因：{revision_policy_reason}")
+            if quality_delta_decision:
+                notes.append(f"发布质量增益判定：{quality_delta_decision}")
             if published_row is not None and not summary_generated:
                 notes.append("已发布但缺少 chapter_summary")
             if child_run is not None and not continuity_applied:
@@ -373,6 +385,13 @@ class WorkflowService:
                 continuity_applied=continuity_applied,
                 summary_generated=summary_generated,
                 derived_update_status=derived_update_status,
+                revision_policy_decision=revision_policy_decision,
+                revision_policy_reason=revision_policy_reason,
+                no_improvement_reason=no_improvement_reason,
+                revision_text_changed=revision_text_changed if isinstance(revision_text_changed, bool) else None,
+                revision_attempt_count=(int(revision_attempt_count) if isinstance(revision_attempt_count, int) else None),
+                quality_delta_decision=(str(quality_delta_decision) if quality_delta_decision is not None else None),
+                delta_baseline_source=(str(delta_baseline_source) if delta_baseline_source is not None else None),
                 notes=notes,
             )
             chapter_reports.append(report)
@@ -385,12 +404,23 @@ class WorkflowService:
                     "failed_gate_names": report.failed_gate_names,
                     "failed_agent_call_count": report.failed_agent_call_count,
                     "notes": report.notes,
+                    "revision_policy_decision": report.revision_policy_decision,
+                    "revision_policy_reason": report.revision_policy_reason,
+                    "no_improvement_reason": report.no_improvement_reason,
+                    "revision_text_changed": report.revision_text_changed,
+                    "revision_attempt_count": report.revision_attempt_count,
+                    "quality_delta_decision": report.quality_delta_decision,
+                    "delta_baseline_source": report.delta_baseline_source,
                 }
                 if child_run is not None:
                     run_metadata = dict(child_run.run_metadata or {})
                     reason = run_metadata.get("attention_reason") or run_metadata.get("failure_reason") or reason
                     if report.run_status in {"manual_review", "paused"}:
                         reason = run_metadata.get("manual_takeover_reason") or run_metadata.get("pause_reason") or reason
+                if report.revision_policy_reason and report.next_action in {"review_revised_draft", "review_revision_limit"}:
+                    reason = str(report.revision_policy_reason)
+                elif report.quality_delta_decision == "fail":
+                    reason = "发布质量增益检查未通过"
                 attention_items.append(
                     ChapterSequenceAttentionItem(
                         chapter_no=report.chapter_no,
@@ -435,6 +465,8 @@ class WorkflowService:
             "failed_agent_call_count": sum(item.failed_agent_call_count for item in chapter_reports),
             "manual_or_paused_chapter_count": sum(1 for item in chapter_reports if item.run_status in {"manual_review", "paused"}),
             "derived_updates_ready_count": sum(1 for item in chapter_reports if item.derived_update_status in {"completed", "partial"}),
+            "revision_policy_manual_review_count": sum(1 for item in chapter_reports if item.revision_policy_decision == "stop_for_manual_review"),
+            "quality_delta_non_pass_count": sum(1 for item in chapter_reports if item.quality_delta_decision in {"warn", "fail"}),
         }
 
         acceptance_checks: list[ChapterSequenceAcceptanceCheck] = []
