@@ -30,6 +30,7 @@ jobs:
         if: always()
         run: |
           shopt -s nullglob
+          shell: bash
           files=(output/stage_acceptance_summary_core_*.json)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::warning::未找到 core 阶段验收摘要文件（output/stage_acceptance_summary_core_*.json）。"
