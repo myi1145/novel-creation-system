@@ -847,27 +847,49 @@ class WorkflowService:
         highest_severity = (review.highest_severity or "").upper()
         return highest_severity != "S3"
 
+    def _highest_severity_from_reviews(self, reviews: list[GateReviewResult]) -> str:
+        ordering = {"S3": 3, "S2": 2, "S1": 1, "S0": 0}
+        highest = "S0"
+        for review in reviews:
+            level = str(review.highest_severity or "S0").upper()
+            if ordering.get(level, 0) > ordering.get(highest, 0):
+                highest = level
+        return highest
+
+    def _extract_issue_types(self, reviews: list[GateReviewResult]) -> list[str]:
+        categories: set[str] = set()
+        for review in reviews:
+            for issue in list(review.issues or []):
+                issue_payload = issue.model_dump(mode="json") if hasattr(issue, "model_dump") else (issue if isinstance(issue, dict) else {})
+                if not isinstance(issue_payload, dict):
+                    continue
+                category = issue_payload.get("category")
+                if isinstance(category, str) and category.strip():
+                    categories.add(category.strip())
+        return sorted(categories)
+
     def _build_revision_task(self, *, draft: ChapterDraft, failed_reviews: list[GateReviewResult], next_attempt_no: int) -> dict:
         actionable_issues: list[dict] = []
         rewrite_hints: list[dict] = []
         severity_counter: Counter = Counter()
         for review in failed_reviews:
             for issue in list(review.issues or []):
-                if not isinstance(issue, dict):
+                issue_payload = issue.model_dump(mode="json") if hasattr(issue, "model_dump") else (issue if isinstance(issue, dict) else {})
+                if not isinstance(issue_payload, dict):
                     continue
-                severity = str(issue.get("severity") or "S1").upper()
+                severity = str(issue_payload.get("severity") or "S1").upper()
                 severity_counter[severity] += 1
                 actionable_issues.append(
                     {
                         "gate_name": review.gate_name,
                         "severity": severity,
-                        "category": issue.get("category"),
-                        "message": issue.get("message"),
-                        "summary": issue.get("summary"),
-                        "suggestion": issue.get("suggestion"),
+                        "category": issue_payload.get("category"),
+                        "message": issue_payload.get("message"),
+                        "summary": issue_payload.get("summary"),
+                        "suggestion": issue_payload.get("suggestion"),
                     }
                 )
-                metadata = issue.get("metadata") if isinstance(issue.get("metadata"), dict) else {}
+                metadata = issue_payload.get("metadata") if isinstance(issue_payload.get("metadata"), dict) else {}
                 for key in ("rewrite_issue", "seed_consumption_report", "character_voice_issue", "character_voice_report", "style_issue", "style_report"):
                     hint = metadata.get(key)
                     if hint is not None:
@@ -1118,6 +1140,10 @@ class WorkflowService:
                         attempt_count = 0
                         before_fail_count = len(failed_gate_reviews)
                         after_fail_count = before_fail_count
+                        highest_severity_before_revision = self._highest_severity_from_reviews(failed_gate_reviews)
+                        highest_severity_after_revision = highest_severity_before_revision
+                        target_issue_types = self._extract_issue_types(failed_gate_reviews)
+                        improved_issue_types: list[str] = []
                         revised_draft: ChapterDraft | None = None
                         last_results = gate_results
                         while attempt_count < request.max_revision_rounds:
@@ -1152,6 +1178,10 @@ class WorkflowService:
                             )
                             run = db.get(WorkflowRunORM, run.id) or run
                             after_fail_count = sum(1 for item in last_results if item.pass_status == "failed")
+                            failed_after_reviews = [item for item in last_results if item.pass_status == "failed"]
+                            highest_severity_after_revision = self._highest_severity_from_reviews(failed_after_reviews)
+                            after_issue_types = self._extract_issue_types(failed_after_reviews)
+                            improved_issue_types = sorted(set(target_issue_types) - set(after_issue_types))
                             run = self._record_cycle_state(
                                 db=db,
                                 run=run,
@@ -1161,6 +1191,10 @@ class WorkflowService:
                                     "revision_task": revision_task,
                                     "gate_failures_before_revision": before_fail_count,
                                     "gate_failures_after_revision": after_fail_count,
+                                    "highest_severity_before_revision": highest_severity_before_revision,
+                                    "highest_severity_after_revision": highest_severity_after_revision,
+                                    "revision_target_issue_types": target_issue_types,
+                                    "improved_issue_types": improved_issue_types,
                                     "revised_draft_id": revised_draft.id,
                                 },
                             )
@@ -1190,6 +1224,11 @@ class WorkflowService:
                                     "auto_revised": True,
                                     "gate_failures_before_revision": before_fail_count,
                                     "gate_failures_after_revision": after_fail_count,
+                                    "highest_severity_before_revision": highest_severity_before_revision,
+                                    "highest_severity_after_revision": highest_severity_after_revision,
+                                    "revision_target_issue_types": target_issue_types,
+                                    "improved_issue_types": improved_issue_types,
+                                    "no_improvement_reason": ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None),
                                     "revised_draft_id": (revised_draft.id if revised_draft else None),
                                 },
                             )
