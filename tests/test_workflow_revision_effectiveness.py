@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.domain.enums import GateName
 from app.main import create_app
 from app.schemas.gate import GateReviewResult
+from app.services.agent_gateway import AgentInvocationResult, agent_gateway
 from app.services.gate_service import gate_service
 
 
@@ -190,6 +191,60 @@ class WorkflowRevisionEffectivenessTest(unittest.TestCase):
         self.assertEqual(data["next_action"], "review_revised_draft")
         meta = data["run"]["run_metadata"]
         self.assertEqual(meta.get("no_improvement_reason"), "gate_failures_not_reduced")
+
+    def test_revision_policy_should_stop_when_text_not_changed_even_if_gate_mock_turns_pass(self):
+        project_id, goal_id, bp_id = self._create_project_and_blueprint()
+        call_state = {"n": 0}
+
+        def review_side_effect(db, request):
+            call_state["n"] += 1
+            if call_state["n"] == 1:
+                return _base_pass(project_id, request.draft_id) + [
+                    _gate_result(project_id, request.draft_id, GateName.NARRATIVE, passed=False, severity="S1", category="narrative_alignment", message="首轮失败")
+                ]
+            return _base_pass(project_id, request.draft_id)
+
+        def same_text_revision(db, context, audit_context):
+            return AgentInvocationResult(
+                payload={"content": str(context.get("content") or ""), "metadata": {"provider": "mock", "model": settings.agent_model}},
+                configured_provider="mock",
+                active_provider="mock",
+                model=settings.agent_model,
+                prompt_template_id=None,
+                prompt_template_key="chapter_revise",
+                prompt_template_version=1,
+                prompt_scope_type="default",
+                prompt_scope_key=None,
+                prompt_provider_scope="mock",
+                fallback_used=False,
+                call_status="success",
+                latency_ms=1,
+                attempt_count=1,
+            )
+
+        with (
+            patch.object(gate_service, "run_reviews", side_effect=review_side_effect),
+            patch.object(agent_gateway, "revise_draft", side_effect=same_text_revision),
+        ):
+            resp = self.client.post(
+                "/api/v1/workflows/chapter-cycle/execute",
+                json={
+                    "project_id": project_id,
+                    "chapter_goal_id": goal_id,
+                    "selected_blueprint_id": bp_id,
+                    "auto_revise_on_gate_failure": True,
+                    "max_revision_rounds": 1,
+                    "auto_propose_changeset": False,
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual(data["stage_status"], "attention_required")
+        self.assertEqual(data["next_action"], "review_revised_draft")
+        meta = data["run"]["run_metadata"]
+        self.assertEqual(meta.get("revision_policy_decision"), "stop_for_manual_review")
+        self.assertEqual(meta.get("revision_policy_reason"), "revision_text_not_changed")
+        self.assertEqual(meta.get("revision_text_changed"), False)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ class RevisionPolicyInput(BaseModel):
     max_auto_revision_rounds: int = 1
     no_improvement_reason: str | None = None
     hard_blocking_exists: bool = False
+    revision_text_changed: bool = True
+    revision_changed_char_ratio: float = 0.0
 
 
 class RevisionPolicyDecision(BaseModel):
@@ -49,6 +51,15 @@ class WorkflowRevisionPolicyService:
                 require_manual_review=True,
                 improvement_detected=improvement_detected,
                 improvement_signals=improvement_signals,
+                max_revision_reached=max_reached,
+            )
+        if not payload.revision_text_changed:
+            return RevisionPolicyDecision(
+                decision="stop_for_manual_review",
+                reason="revision_text_not_changed",
+                require_manual_review=True,
+                improvement_detected=False,
+                improvement_signals=[],
                 max_revision_reached=max_reached,
             )
         if payload.gate_failures_after_revision == 0:
