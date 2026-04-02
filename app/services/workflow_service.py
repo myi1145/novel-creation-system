@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 import json
 
 from pydantic import BaseModel
@@ -869,6 +870,20 @@ class WorkflowService:
                     categories.add(category.strip())
         return sorted(categories)
 
+    def _calculate_revision_text_effectiveness(self, *, before_text: str, after_text: str) -> dict[str, float | bool]:
+        before = (before_text or "").strip()
+        after = (after_text or "").strip()
+        if not before and not after:
+            similarity = 1.0
+        else:
+            similarity = SequenceMatcher(None, before, after).ratio()
+        changed_ratio = max(0.0, min(1.0, 1.0 - similarity))
+        return {
+            "revision_similarity_score": round(similarity, 6),
+            "revision_changed_char_ratio": round(changed_ratio, 6),
+            "revision_text_changed": changed_ratio > 0.0,
+        }
+
     def _build_revision_task(self, *, draft: ChapterDraft, failed_reviews: list[GateReviewResult], next_attempt_no: int) -> dict:
         actionable_issues: list[dict] = []
         rewrite_hints: list[dict] = []
@@ -1152,6 +1167,7 @@ class WorkflowService:
                         policy_improvement_detected = False
                         policy_improvement_signals: list[str] = []
                         policy_max_revision_reached = False
+                        policy_requires_manual_review = False
                         while attempt_count < request.max_revision_rounds:
                             attempt_count += 1
                             revision_task = self._build_revision_task(draft=draft, failed_reviews=failed_gate_reviews, next_attempt_no=attempt_count)
@@ -1186,6 +1202,10 @@ class WorkflowService:
                             after_fail_count = sum(1 for item in last_results if item.pass_status == "failed")
                             failed_after_reviews = [item for item in last_results if item.pass_status == "failed"]
                             highest_severity_after_revision = self._highest_severity_from_reviews(failed_after_reviews)
+                            text_effectiveness = self._calculate_revision_text_effectiveness(
+                                before_text=draft.content if draft is not None else "",
+                                after_text=revised_draft.content if revised_draft is not None else "",
+                            )
                             after_issue_types = self._extract_issue_types(failed_after_reviews)
                             improved_issue_types = sorted(set(target_issue_types) - set(after_issue_types))
                             hard_blocking_exists = any(
@@ -1195,11 +1215,13 @@ class WorkflowService:
                             no_improvement_reason = (
                                 "no_improvement_detected"
                                 if (
+                                    bool(text_effectiveness.get("revision_text_changed"))
+                                    and
                                     after_fail_count >= before_fail_count
                                     and highest_severity_after_revision == highest_severity_before_revision
                                     and not improved_issue_types
                                 )
-                                else None
+                                else ("no_text_delta_after_revision" if not bool(text_effectiveness.get("revision_text_changed")) else None)
                             )
                             policy_decision = workflow_revision_policy_service.evaluate(
                                 RevisionPolicyInput(
@@ -1213,6 +1235,8 @@ class WorkflowService:
                                     max_auto_revision_rounds=request.max_revision_rounds,
                                     no_improvement_reason=no_improvement_reason,
                                     hard_blocking_exists=hard_blocking_exists,
+                                    revision_text_changed=bool(text_effectiveness.get("revision_text_changed")),
+                                    revision_changed_char_ratio=float(text_effectiveness.get("revision_changed_char_ratio") or 0.0),
                                 )
                             )
                             policy_decision_reason = policy_decision.reason
@@ -1238,6 +1262,9 @@ class WorkflowService:
                                     "improvement_detected": policy_improvement_detected,
                                     "improvement_signals": policy_improvement_signals,
                                     "max_revision_reached": policy_max_revision_reached,
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
                                     "revised_draft_id": revised_draft.id,
                                 },
                             )
@@ -1248,9 +1275,46 @@ class WorkflowService:
                                 draft = revised_draft
                                 break
                             if policy_decision.require_manual_review:
+                                policy_requires_manual_review = True
                                 break
                             failed_gate_reviews = [item for item in last_results if item.pass_status == "failed"]
                             draft = revised_draft
+                        if policy_requires_manual_review:
+                            result.gate_results = last_results
+                            result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft or draft
+                            return self._stop_cycle_for_manual_action(
+                                db=db,
+                                run=run,
+                                result=result,
+                                current_step="review_revised_draft_required",
+                                reason="修订策略判定需人工审阅后再继续",
+                                next_action="review_revised_draft",
+                                extra_metadata={
+                                    "draft_id": result.draft.id if result.draft else (revised_draft.id if revised_draft else draft.id),
+                                    "revision_attempt_count": attempt_count,
+                                    "auto_revised": True,
+                                    "gate_failures_before_revision": before_fail_count,
+                                    "gate_failures_after_revision": after_fail_count,
+                                    "highest_severity_before_revision": highest_severity_before_revision,
+                                    "highest_severity_after_revision": highest_severity_after_revision,
+                                    "revision_target_issue_types": target_issue_types,
+                                    "improved_issue_types": improved_issue_types,
+                                    "revision_policy_decision": policy_decision_name,
+                                    "revision_policy_reason": policy_decision_reason,
+                                    "improvement_detected": policy_improvement_detected,
+                                    "improvement_signals": policy_improvement_signals,
+                                    "max_revision_reached": policy_max_revision_reached,
+                                    "no_improvement_reason": (
+                                        "no_text_delta_after_revision"
+                                        if not bool(text_effectiveness.get("revision_text_changed"))
+                                        else ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None)
+                                    ),
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
+                                    "revised_draft_id": (revised_draft.id if revised_draft else None),
+                                },
+                            )
                         if after_fail_count > 0:
                             result.gate_results = last_results
                             result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft or draft
@@ -1276,7 +1340,14 @@ class WorkflowService:
                                     "improvement_detected": policy_improvement_detected,
                                     "improvement_signals": policy_improvement_signals,
                                     "max_revision_reached": policy_max_revision_reached,
-                                    "no_improvement_reason": ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None),
+                                    "no_improvement_reason": (
+                                        "no_text_delta_after_revision"
+                                        if not bool(text_effectiveness.get("revision_text_changed"))
+                                        else ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None)
+                                    ),
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
                                     "revised_draft_id": (revised_draft.id if revised_draft else None),
                                 },
                             )
