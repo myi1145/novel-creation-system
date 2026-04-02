@@ -135,6 +135,7 @@
 - 仓库内存在真实 provider 的 smoke / acceptance 测试入口；
 - 这些用例依赖外部环境配置（模型、密钥、网络等）；
 - 应与默认 mock 回归分开看待，不代表默认配置开箱即跑。
+- 推荐通过统一入口执行：`python tests/run_real_provider_acceptance.py --suite smoke|acceptance|all`（环境缺失时相关用例会 skip 并提示缺失项）。
 
 ---
 

@@ -7,12 +7,14 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from tests.real_provider_test_helper import format_recent_agent_calls, preflight_gateway_or_skip, raise_skip_unless_real_provider_ready
 
 
 class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
+        raise_skip_unless_real_provider_ready(suite_name="real-provider-multi-chapter-revision-acceptance")
 
     def _create_project(self) -> str:
         resp = self.client.post(
@@ -40,26 +42,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def _gateway_preflight(self) -> dict[str, Any]:
-        resp = self.client.get("/api/v1/workflows/agent-gateway/status")
-        self.assertEqual(resp.status_code, 200, msg="真实 provider 预检失败：无法读取 gateway 状态。")
-        data = resp.json()["data"]
-        problems = []
-        if data.get("configured_provider") != "openai_compatible":
-            problems.append(f"configured_provider={data.get('configured_provider')}")
-        if data.get("active_provider") != "openai_compatible":
-            problems.append(f"active_provider={data.get('active_provider')}")
-        if bool(data.get("fallback_active")):
-            problems.append(f"fallback_active={data.get('fallback_active')}")
-        if not bool(data.get("available")):
-            problems.append(f"available={data.get('available')}")
-        if problems:
-            self.fail(
-                "真实 provider 预检不通过（fail fast）：\n"
-                f"gateway_status={data}\n"
-                f"异常项={'; '.join(problems)}\n"
-                "本测试禁止 fallback/mock，请先修复环境后重试。"
-            )
-        return data
+        return preflight_gateway_or_skip(self, self.client, suite_name="real-provider-multi-chapter-revision-acceptance")
 
     def _list_agent_calls(self, project_id: str, limit: int = 300) -> list[dict[str, Any]]:
         resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": limit})
@@ -67,21 +50,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
         return resp.json()["data"]
 
     def _diagnostic_recent_calls(self, calls: list[dict[str, Any]], limit: int = 12) -> str:
-        rows = []
-        for item in calls[:limit]:
-            summary = item.get("response_summary") if isinstance(item.get("response_summary"), dict) else {}
-            rows.append(
-                (
-                    f"action={item.get('action_name')} "
-                    f"configured={item.get('configured_provider')} "
-                    f"active={item.get('active_provider')} "
-                    f"status={item.get('call_status')} "
-                    f"fallback_used={item.get('fallback_used')} "
-                    f"error_type={item.get('error_type')} "
-                    f"parse_report={summary.get('parse_report')}"
-                )
-            )
-        return "\n".join(rows)
+        return format_recent_agent_calls(calls, limit=limit)
 
     def _chapter_digest(self, chapter_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         digest = []

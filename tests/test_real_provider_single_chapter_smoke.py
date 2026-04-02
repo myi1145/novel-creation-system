@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from tests.real_provider_test_helper import format_recent_agent_calls, preflight_gateway_or_skip, raise_skip_unless_real_provider_ready
 
 
 class RealProviderSingleChapterSmokeTest(unittest.TestCase):
@@ -15,6 +16,7 @@ class RealProviderSingleChapterSmokeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
+        raise_skip_unless_real_provider_ready(suite_name="real-provider-single-chapter-smoke")
 
     def _create_project(self) -> str:
         resp = self.client.post(
@@ -42,67 +44,10 @@ class RealProviderSingleChapterSmokeTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def _diagnostic_recent_calls(self, agent_calls: list[dict[str, Any]], limit: int = 8) -> str:
-        lines: list[str] = []
-        for item in agent_calls[:limit]:
-            response_summary = item.get("response_summary") if isinstance(item.get("response_summary"), dict) else {}
-            parse_report = response_summary.get("parse_report") if isinstance(response_summary, dict) else None
-            provider_error_details = response_summary.get("provider_error_details") if isinstance(response_summary, dict) else None
-            provider_status_code = None
-            provider_error_body = None
-            provider_model = item.get("model_name")
-            message_count = None
-            system_prompt_length = None
-            user_prompt_length = None
-            if isinstance(provider_error_details, dict):
-                provider_status_code = provider_error_details.get("provider_status_code") or provider_error_details.get("status_code")
-                provider_error_body = provider_error_details.get("provider_error_body")
-                provider_model = provider_error_details.get("model") or provider_model
-                message_count = provider_error_details.get("message_count")
-                system_prompt_length = provider_error_details.get("system_prompt_length")
-                user_prompt_length = provider_error_details.get("user_prompt_length")
-            lines.append(
-                (
-                    f"action={item.get('action_name')} "
-                    f"configured={item.get('configured_provider')} "
-                    f"active={item.get('active_provider')} "
-                    f"model={provider_model} "
-                    f"status={item.get('call_status')} "
-                    f"fallback_used={item.get('fallback_used')} "
-                    f"error_type={item.get('error_type')} "
-                    f"provider_status_code={provider_status_code} "
-                    f"message_count={message_count} "
-                    f"system_prompt_length={system_prompt_length} "
-                    f"user_prompt_length={user_prompt_length} "
-                    f"provider_error_body={provider_error_body} "
-                    f"parse_report={parse_report}"
-                )
-            )
-        return "\n".join(lines)
+        return format_recent_agent_calls(agent_calls, limit=limit)
 
     def _assert_gateway_preflight(self) -> dict[str, Any]:
-        resp = self.client.get("/api/v1/workflows/agent-gateway/status")
-        self.assertEqual(resp.status_code, 200, msg="真实 provider 预检失败：无法读取 gateway 状态。")
-        data = resp.json()["data"]
-
-        problems: list[str] = []
-        if data.get("configured_provider") != "openai_compatible":
-            problems.append(f"configured_provider={data.get('configured_provider')}")
-        if data.get("active_provider") != "openai_compatible":
-            problems.append(f"active_provider={data.get('active_provider')}")
-        if bool(data.get("fallback_active")):
-            problems.append(f"fallback_active={data.get('fallback_active')}")
-        if not bool(data.get("available")):
-            problems.append(f"available={data.get('available')}")
-
-        if problems:
-            self.fail(
-                "真实 provider 预检不通过：\n"
-                "- 期望 configured_provider/active_provider 都是 openai_compatible，fallback_active=False，available=True。\n"
-                f"- 实际状态：{data}\n"
-                f"- 异常项：{'; '.join(problems)}\n"
-                "- 本测试禁止 fallback/mock 自动降级，请先修复环境配置后重试。"
-            )
-        return data
+        return preflight_gateway_or_skip(self, self.client, suite_name="real-provider-single-chapter-smoke")
 
     def _extract_provider_error_snapshot(self, agent_calls: list[dict[str, Any]]) -> dict[str, Any]:
         for item in agent_calls:
