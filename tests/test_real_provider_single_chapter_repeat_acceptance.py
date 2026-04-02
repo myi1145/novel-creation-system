@@ -189,7 +189,7 @@ class RealProviderSingleChapterRepeatAcceptanceTest(unittest.TestCase):
             derived = derived_resp.json()["data"]
             self.assertGreaterEqual(len(derived.get("tasks") or []), 1)
 
-            calls_resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": 300})
+            calls_resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": 200})
             self.assertEqual(calls_resp.status_code, 200)
             calls = calls_resp.json()["data"]
             iteration["recent_calls"] = calls[:10]
