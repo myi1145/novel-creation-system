@@ -137,6 +137,28 @@
 - 应与默认 mock 回归分开看待，不代表默认配置开箱即跑。
 - 推荐通过统一入口执行：`python tests/run_real_provider_acceptance.py --suite smoke|acceptance|all`（环境缺失时相关用例会 skip 并提示缺失项）。
 
+### 6.3 阶段验收统一入口（基线固化）
+
+为避免“默认 mock 回归”和“真实 provider 验收”混用，新增统一阶段入口：
+
+```bash
+python tests/run_stage_acceptance.py --suite core
+python tests/run_stage_acceptance.py --suite real-smoke
+python tests/run_stage_acceptance.py --suite real-acceptance
+python tests/run_stage_acceptance.py --suite all
+```
+
+分层语义约定（仅用于阶段验收，不代表生产 SLA）：
+
+- `core`：默认 mock 核心回归基线（主链与关键闸门回归）。
+- `real-smoke`：真实 provider 最小联调通过（单章 smoke）。
+- `real-acceptance`：真实 provider 阶段性验收（重复单章 + 多章连续 + 多章 revision 协同）。
+- `all`：按 `core -> real-smoke -> real-acceptance` 顺序串行执行。
+
+入口会在控制台打印阶段摘要（suite、模块数、退出码、是否包含 skip），并默认输出一份最小 JSON 摘要到 `output/stage_acceptance_summary_*.json`。
+
+说明：`real-smoke` / `real-acceptance` 继续复用现有 skip 语义；环境前置缺失时会 skip，不会误报 fail。
+
 ---
 
 ## 7. 已知边界 / 尚未完成项
