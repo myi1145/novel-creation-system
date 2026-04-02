@@ -11,6 +11,7 @@ from tests.real_provider_test_helper import format_recent_agent_calls, preflight
 
 
 class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
+    AGENT_CALLS_LIMIT = 200
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
@@ -44,8 +45,9 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
     def _gateway_preflight(self) -> dict[str, Any]:
         return preflight_gateway_or_skip(self, self.client, suite_name="real-provider-multi-chapter-revision-acceptance")
 
-    def _list_agent_calls(self, project_id: str, limit: int = 300) -> list[dict[str, Any]]:
-        resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": limit})
+    def _list_agent_calls(self, project_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+        effective_limit = self.AGENT_CALLS_LIMIT if limit is None else limit
+        resp = self.client.get("/api/v1/workflows/agent-calls", params={"project_id": project_id, "limit": effective_limit})
         self.assertEqual(resp.status_code, 200)
         return resp.json()["data"]
 
@@ -148,7 +150,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
                 self.assertTrue(data.get("next_action"), msg=f"attention_required 但缺少 next_action: {data}")
 
             # B + C. agent calls 不允许 mock/fallback/degraded
-            calls = self._list_agent_calls(project_id=project_id, limit=300)
+            calls = self._list_agent_calls(project_id=project_id)
             self.assertGreaterEqual(len(calls), 1, msg=f"未查询到 agent 调用日志，project_id={project_id}")
             diagnostics = self._diagnostic_recent_calls(calls)
             for item in calls:
