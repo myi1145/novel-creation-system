@@ -28,9 +28,9 @@ jobs:
 
       - name: 检查阶段摘要文件
         if: always()
+        shell: bash
         run: |
           shopt -s nullglob
-          shell: bash
           files=(output/stage_acceptance_summary_core_*.json)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::warning::未找到 core 阶段验收摘要文件（output/stage_acceptance_summary_core_*.json）。"
@@ -46,4 +46,3 @@ jobs:
           name: core-stage-acceptance-summary
           path: output/stage_acceptance_summary_core_*.json
           if-no-files-found: warn
-
