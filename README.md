@@ -19,6 +19,7 @@
 - 单章主链（目标 -> 蓝图 -> 场景 -> 草稿 -> Gate -> ChangeSet -> Publish）已经能跑通并可验收；
 - 修订执行层已基本收口，revision policy 决策开始被 workflow 真实消费并驱动分流；
 - Publish Delta Gate 已从伪比较切到真实 baseline 比较，sequence 报告层开始暴露单章关键决策结果；
+- 当前阶段验收基线与真实 provider 手动验收链路已完成验证；
 - 真实 provider 联调与生产化验收仍是下一阶段重点，当前不应视为稳定生产自治系统。
 
 ---
@@ -159,8 +160,9 @@ python tests/run_stage_acceptance.py --suite all
 
 说明：`real-smoke` / `real-acceptance` 继续复用现有 skip 语义；环境前置缺失时会 skip，不会误报 fail。
 
-补充：默认 GitHub Actions（push / pull_request）已接入 `core` 阶段验收，不会自动执行 `real-smoke` / `real-acceptance`。
-- real provider 的 GitHub 验收入口为手动触发 workflow_dispatch（workflow: `Real Provider Stage Acceptance (Manual)`，输入 `suite=real-smoke|real-acceptance|all`）。
+补充：
+- 默认 GitHub Actions（push / pull_request）已接入 `core` 阶段验收，并已作为主分支合并门槛完成实际验证；默认自动 CI 不会执行 `real-smoke` / `real-acceptance`。
+- real provider 的 GitHub 验收入口为手动触发 workflow_dispatch（workflow: `Real Provider Stage Acceptance (Manual)`，输入 `suite=real-smoke|real-acceptance|all`）；该入口已可用，`real-smoke` 与 `real-acceptance` 已完成真实手动验收通过，但仍依赖外部环境配置，不属于默认自动 CI。
 
 ---
 
