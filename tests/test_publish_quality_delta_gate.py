@@ -128,6 +128,19 @@ class PublishQualityDeltaGateTest(unittest.TestCase):
         apply_resp = self.client.post(f"/api/v1/changesets/{changeset_id}/apply")
         self.assertEqual(apply_resp.status_code, 200)
 
+    def _revise_draft(self, project_id: str, draft_id: str) -> dict:
+        revise_resp = self.client.post(
+            "/api/v1/chapters/drafts/revise",
+            json={
+                "project_id": project_id,
+                "draft_id": draft_id,
+                "revision_instruction": "最小修订",
+                "revised_by": "tester",
+            },
+        )
+        self.assertEqual(revise_resp.status_code, 200)
+        return revise_resp.json()["data"]
+
     def test_delta_report_generation_identical_text(self):
         report = quality_delta_service.evaluate(
             QualityDeltaContext(
@@ -153,32 +166,56 @@ class PublishQualityDeltaGateTest(unittest.TestCase):
         payload = publish_resp.json()["data"]
         delta = payload.get("delta_report")
         self.assertIsInstance(delta, dict)
-        self.assertGreaterEqual(delta.get("similarity_score", 0), 0.98)
-        self.assertFalse(delta.get("has_meaningful_delta", True))
-        self.assertEqual(delta.get("decision"), "warn")
+        self.assertEqual(delta.get("decision"), "pass")
+        self.assertTrue(delta.get("has_meaningful_delta"))
+        metadata = payload.get("published_chapter", {}).get("publish_metadata") or {}
+        self.assertEqual(metadata.get("delta_baseline_source"), "baseline_unavailable")
+        self.assertEqual(metadata.get("delta_baseline_ref_id"), "")
+        self.assertIn("降级", metadata.get("delta_baseline_reason") or "")
 
-    def test_strict_mode_blocks_publish_when_no_meaningful_delta_and_issues_unresolved(self):
+    def test_strict_mode_should_not_be_falsely_blocked_by_self_comparison_when_baseline_missing(self):
         settings.publish_require_quality_delta = True
 
         project_id = self._create_project_and_snapshot()
         draft = self._prepare_draft(project_id)
-
-        with SessionLocal() as db:
-            row = db.get(ChapterDraftORM, draft["id"])
-            self.assertIsNotNone(row)
-            row.content = "短文本。"
-            db.commit()
-
         self._complete_changeset_chain(project_id=project_id, draft_id=draft["id"])
 
         publish_resp = self.client.post(
             "/api/v1/chapters/drafts/publish",
             json={"project_id": project_id, "draft_id": draft["id"], "published_by": "tester"},
         )
-        self.assertEqual(publish_resp.status_code, 409)
-        error_message = (publish_resp.json().get("error") or {}).get("message") or ""
-        self.assertIn("发布质量增益检查未通过", error_message)
-        self.assertIn("相似度", error_message)
+        self.assertEqual(publish_resp.status_code, 200)
+        payload = publish_resp.json()["data"]
+        delta = payload.get("delta_report") or {}
+        self.assertLess(delta.get("similarity_score", 1.0), 0.98)
+        metadata = payload.get("published_chapter", {}).get("publish_metadata") or {}
+        self.assertEqual(metadata.get("delta_baseline_source"), "baseline_unavailable")
+
+    def test_delta_should_use_predecessor_draft_as_real_baseline(self):
+        project_id = self._create_project_and_snapshot()
+        first_draft = self._prepare_draft(project_id)
+        revised_draft = self._revise_draft(project_id=project_id, draft_id=first_draft["id"])
+
+        with SessionLocal() as db:
+            first_row = db.get(ChapterDraftORM, first_draft["id"])
+            revised_row = db.get(ChapterDraftORM, revised_draft["id"])
+            self.assertIsNotNone(first_row)
+            self.assertIsNotNone(revised_row)
+            revised_row.content = first_row.content
+            db.commit()
+
+        self._complete_changeset_chain(project_id=project_id, draft_id=revised_draft["id"])
+        publish_resp = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": revised_draft["id"], "published_by": "tester"},
+        )
+        self.assertEqual(publish_resp.status_code, 200)
+        payload = publish_resp.json()["data"]
+        delta = payload.get("delta_report") or {}
+        self.assertGreaterEqual(delta.get("similarity_score", 0.0), 0.99)
+        metadata = payload.get("published_chapter", {}).get("publish_metadata") or {}
+        self.assertEqual(metadata.get("delta_baseline_source"), "predecessor_draft")
+        self.assertEqual(metadata.get("delta_baseline_ref_id"), first_draft["id"])
 
     def test_visible_text_changes_should_not_fail_delta_gate(self):
         report = quality_delta_service.evaluate(

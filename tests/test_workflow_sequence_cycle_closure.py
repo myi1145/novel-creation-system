@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -6,7 +7,43 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.models import PublishedChapterORM
 from app.db.session import SessionLocal
+from app.domain.enums import GateName
 from app.main import create_app
+from app.schemas.gate import GateReviewResult
+from app.services.gate_service import gate_service
+
+
+def _gate_result(project_id: str, draft_id: str, gate_name: GateName, *, passed: bool, severity: str, category: str, message: str) -> GateReviewResult:
+    return GateReviewResult(
+        project_id=project_id,
+        draft_id=draft_id,
+        gate_name=gate_name,
+        pass_status=("passed" if passed else "failed"),
+        passed=passed,
+        highest_severity=("S0" if passed else severity),
+        recommended_route=("pass" if passed else "rewrite"),
+        issues=(
+            []
+            if passed
+            else [
+                {
+                    "severity": severity,
+                    "category": category,
+                    "message": message,
+                    "summary": message,
+                    "suggestion": "修订文本后重试",
+                    "metadata": {},
+                }
+            ]
+        ),
+    )
+
+
+def _base_pass_results(project_id: str, draft_id: str) -> list[GateReviewResult]:
+    return [
+        _gate_result(project_id, draft_id, GateName.SCHEMA, passed=True, severity="S0", category="pass", message="通过"),
+        _gate_result(project_id, draft_id, GateName.CANON, passed=True, severity="S0", category="pass", message="通过"),
+    ]
 
 
 class WorkflowSequenceCycleClosureTest(unittest.TestCase):
@@ -127,6 +164,41 @@ class WorkflowSequenceCycleClosureTest(unittest.TestCase):
             stored = list(payload.get("derived_update_tasks") or [])
             stored_names = [item.get("task_name") for item in stored if isinstance(item, dict)]
             self.assertEqual(len(stored_names), len(set(stored_names)))
+
+    def test_sequence_report_should_surface_revision_manual_review_decisions(self):
+        project_id = self._create_project_and_snapshot()
+
+        def always_fail(db, request):
+            return _base_pass_results(project_id, request.draft_id) + [
+                _gate_result(project_id, request.draft_id, GateName.NARRATIVE, passed=False, severity="S1", category="narrative_alignment", message="持续失败")
+            ]
+
+        with patch.object(gate_service, "run_reviews", side_effect=always_fail):
+            data = self._execute_sequence(
+                project_id,
+                auto_publish=False,
+                auto_revise_on_gate_failure=True,
+                max_revision_rounds=1,
+            )
+        report_resp = self.client.get(f"/api/v1/workflows/chapter-sequence/reports/{data['run']['id']}")
+        self.assertEqual(report_resp.status_code, 200)
+        report = report_resp.json()["data"]
+        chapter_report = report["chapter_reports"][0]
+        self.assertEqual(chapter_report["revision_policy_decision"], "stop_for_manual_review")
+        self.assertTrue(chapter_report["revision_policy_reason"])
+        self.assertEqual(chapter_report["revision_attempt_count"], 1)
+        self.assertIn("revision_policy_reason", report["attention_items"][0]["details"])
+
+    def test_sequence_report_should_surface_publish_delta_decision_and_baseline(self):
+        project_id = self._create_project_and_snapshot()
+        data = self._execute_sequence(project_id, chapter_count=1, auto_publish=True, published_by="tester")
+        report_resp = self.client.get(f"/api/v1/workflows/chapter-sequence/reports/{data['run']['id']}")
+        self.assertEqual(report_resp.status_code, 200)
+        report = report_resp.json()["data"]
+        chapter_report = report["chapter_reports"][0]
+        self.assertTrue(chapter_report["quality_delta_decision"])
+        self.assertTrue(chapter_report["delta_baseline_source"])
+        self.assertIn("quality_delta_non_pass_count", report["summary"])
 
 
 if __name__ == "__main__":

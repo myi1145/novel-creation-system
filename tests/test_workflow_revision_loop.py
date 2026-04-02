@@ -185,6 +185,40 @@ class WorkflowRevisionLoopTest(unittest.TestCase):
         self.assertEqual(data["next_action"], "revise_draft")
         self.assertEqual(revise_mock.call_count, 0)
 
+    def test_cycle_should_persist_manual_node_when_revision_limit_reached(self):
+        project_id = self._create_project_and_snapshot()
+        goal_id, bp_id = self._prepare_goal_and_blueprint(project_id)
+
+        def first_round_fail(db, request):
+            return _base_pass_results(project_id, request.draft_id) + [
+                _gate_result(project_id, request.draft_id, GateName.NARRATIVE, passed=False, severity="S1", category="narrative_alignment", message="需要修订")
+            ]
+
+        with patch.object(gate_service, "run_reviews", side_effect=first_round_fail):
+            resp = self.client.post(
+                "/api/v1/workflows/chapter-cycle/execute",
+                json={
+                    "project_id": project_id,
+                    "chapter_goal_id": goal_id,
+                    "selected_blueprint_id": bp_id,
+                    "auto_revise_on_gate_failure": True,
+                    "max_revision_rounds": 0,
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual(data["stage_status"], "attention_required")
+        self.assertEqual(data["next_action"], "review_revision_limit")
+        run = data["run"]
+        self.assertEqual(run["status"], "attention_required")
+        self.assertEqual(run["current_step"], "review_revision_limit_required")
+        metadata = run.get("run_metadata") or {}
+        self.assertEqual(metadata.get("stop_reason"), "revision_limit_reached")
+        self.assertEqual(metadata.get("manual_review_required"), True)
+        self.assertEqual(metadata.get("max_revision_rounds"), 0)
+        self.assertEqual(metadata.get("revision_attempt_count"), 0)
+        self.assertTrue(metadata.get("draft_id"))
+
     def test_sequence_should_continue_after_successful_revision_of_previous_chapter(self):
         project_id = self._create_project_and_snapshot()
         call_state = {"calls": 0}

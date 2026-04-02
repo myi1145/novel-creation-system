@@ -294,6 +294,13 @@ class ChapterSequenceChapterReport(BaseModel):
     continuity_applied: bool = False
     summary_generated: bool = False
     derived_update_status: str | None = None
+    revision_policy_decision: str | None = None
+    revision_policy_reason: str | None = None
+    no_improvement_reason: str | None = None
+    revision_text_changed: bool | None = None
+    revision_attempt_count: int | None = None
+    quality_delta_decision: str | None = None
+    delta_baseline_source: str | None = None
     notes: list[str] = Field(default_factory=list)
 
 

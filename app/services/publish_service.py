@@ -175,9 +175,14 @@ class PublishService:
             latest_reviews = self._list_latest_gate_reviews(db=db, project_id=request.project_id, draft_id=draft.id)
             unresolved_critical_issues_count = quality_delta_service.count_unresolved_critical_issues(latest_reviews)
             narrative_seed_report = self._extract_seed_consumption_report(latest_reviews)
+            baseline = self._resolve_delta_baseline(
+                db=db,
+                draft=draft,
+                goal=goal,
+            )
             delta_report = quality_delta_service.evaluate(
                 QualityDeltaContext(
-                    draft_text=draft.content or "",
+                    draft_text=baseline["baseline_text"],
                     candidate_published_text=draft.content or "",
                     unresolved_critical_issues_count=unresolved_critical_issues_count,
                 )
@@ -205,6 +210,9 @@ class PublishService:
                     "workflow_run_id": run.id,
                     "trace_id": run.trace_id,
                     "quality_delta_report": delta_report.model_dump(mode="json"),
+                    "delta_baseline_source": baseline["source"],
+                    "delta_baseline_ref_id": baseline["ref_id"],
+                    "delta_baseline_reason": baseline["reason"],
                     "seed_consumption_report": (narrative_seed_report.model_dump(mode="json") if narrative_seed_report is not None else None),
                 },
             )
@@ -389,6 +397,43 @@ class PublishService:
                 if isinstance(payload, dict):
                     return SeedConsumptionReport.model_validate(payload)
         return None
+
+    def _resolve_delta_baseline(self, db: Session, *, draft: ChapterDraftORM, goal: ChapterGoalORM) -> dict[str, str]:
+        draft_metadata = dict(draft.draft_metadata or {})
+        parent_draft_id = draft_metadata.get("parent_draft_id")
+        if isinstance(parent_draft_id, str) and parent_draft_id.strip():
+            predecessor = db.get(ChapterDraftORM, parent_draft_id.strip())
+            if predecessor is not None and predecessor.project_id == draft.project_id and predecessor.content:
+                return {
+                    "source": "predecessor_draft",
+                    "ref_id": predecessor.id,
+                    "baseline_text": predecessor.content or "",
+                    "reason": "使用修订前草稿作为质量增益基线",
+                }
+
+        previous_published = (
+            db.query(PublishedChapterORM)
+            .filter(
+                PublishedChapterORM.project_id == draft.project_id,
+                PublishedChapterORM.chapter_no < goal.chapter_no,
+            )
+            .order_by(PublishedChapterORM.chapter_no.desc(), PublishedChapterORM.published_at.desc())
+            .first()
+        )
+        if previous_published is not None and previous_published.content:
+            return {
+                "source": "previous_published_chapter",
+                "ref_id": previous_published.id,
+                "baseline_text": previous_published.content or "",
+                "reason": "缺少修订前草稿，降级为上一已发布章节文本",
+            }
+
+        return {
+            "source": "baseline_unavailable",
+            "ref_id": "",
+            "baseline_text": "",
+            "reason": "未找到 predecessor_draft 或历史已发布章节，降级为空基线",
+        }
 
 
 publish_service = PublishService()

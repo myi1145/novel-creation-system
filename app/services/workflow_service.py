@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 import json
 
 from pydantic import BaseModel
@@ -329,22 +330,34 @@ class WorkflowService:
             if published_row is None and run_published:
                 published_row = sorted(run_published, key=lambda row: row.created_at, reverse=True)[0]
             published_metadata = dict((published_row.publish_metadata if published_row is not None else {}) or {})
-            continuity_applied = bool(((child_run.run_metadata or {}) if child_run is not None else {}).get("continuity_pack"))
+            run_metadata = dict(child_run.run_metadata or {}) if child_run is not None else {}
+            continuity_applied = bool(run_metadata.get("continuity_pack"))
             summary_generated = bool(published_metadata.get("chapter_summary"))
             derived_update_status = published_metadata.get("derived_update_status")
+            revision_policy_decision = run_metadata.get("revision_policy_decision")
+            revision_policy_reason = run_metadata.get("revision_policy_reason")
+            no_improvement_reason = run_metadata.get("no_improvement_reason")
+            revision_text_changed = run_metadata.get("revision_text_changed")
+            revision_attempt_count = run_metadata.get("revision_attempt_count")
+            quality_delta_report = published_metadata.get("quality_delta_report") if isinstance(published_metadata.get("quality_delta_report"), dict) else {}
+            quality_delta_decision = quality_delta_report.get("decision")
+            delta_baseline_source = published_metadata.get("delta_baseline_source")
             notes: list[str] = []
             if failed_gate_names:
                 notes.append(f"失败 Gate：{', '.join(failed_gate_names)}")
             if failed_agent_calls:
                 notes.append(f"Agent 调用失败 {len(failed_agent_calls)} 次")
             if child_run is not None:
-                run_metadata = dict(child_run.run_metadata or {})
                 if run_metadata.get("attention_reason"):
                     notes.append(run_metadata["attention_reason"])
                 if run_metadata.get("failure_reason"):
                     notes.append(run_metadata["failure_reason"])
                 if child_run.status in {"manual_review", "paused"}:
                     notes.append(f"工作流当前处于 {child_run.status}")
+            if revision_policy_reason:
+                notes.append(f"修订策略原因：{revision_policy_reason}")
+            if quality_delta_decision:
+                notes.append(f"发布质量增益判定：{quality_delta_decision}")
             if published_row is not None and not summary_generated:
                 notes.append("已发布但缺少 chapter_summary")
             if child_run is not None and not continuity_applied:
@@ -372,6 +385,13 @@ class WorkflowService:
                 continuity_applied=continuity_applied,
                 summary_generated=summary_generated,
                 derived_update_status=derived_update_status,
+                revision_policy_decision=revision_policy_decision,
+                revision_policy_reason=revision_policy_reason,
+                no_improvement_reason=no_improvement_reason,
+                revision_text_changed=revision_text_changed if isinstance(revision_text_changed, bool) else None,
+                revision_attempt_count=(int(revision_attempt_count) if isinstance(revision_attempt_count, int) else None),
+                quality_delta_decision=(str(quality_delta_decision) if quality_delta_decision is not None else None),
+                delta_baseline_source=(str(delta_baseline_source) if delta_baseline_source is not None else None),
                 notes=notes,
             )
             chapter_reports.append(report)
@@ -384,12 +404,23 @@ class WorkflowService:
                     "failed_gate_names": report.failed_gate_names,
                     "failed_agent_call_count": report.failed_agent_call_count,
                     "notes": report.notes,
+                    "revision_policy_decision": report.revision_policy_decision,
+                    "revision_policy_reason": report.revision_policy_reason,
+                    "no_improvement_reason": report.no_improvement_reason,
+                    "revision_text_changed": report.revision_text_changed,
+                    "revision_attempt_count": report.revision_attempt_count,
+                    "quality_delta_decision": report.quality_delta_decision,
+                    "delta_baseline_source": report.delta_baseline_source,
                 }
                 if child_run is not None:
                     run_metadata = dict(child_run.run_metadata or {})
                     reason = run_metadata.get("attention_reason") or run_metadata.get("failure_reason") or reason
                     if report.run_status in {"manual_review", "paused"}:
                         reason = run_metadata.get("manual_takeover_reason") or run_metadata.get("pause_reason") or reason
+                if report.revision_policy_reason and report.next_action in {"review_revised_draft", "review_revision_limit"}:
+                    reason = str(report.revision_policy_reason)
+                elif report.quality_delta_decision == "fail":
+                    reason = "发布质量增益检查未通过"
                 attention_items.append(
                     ChapterSequenceAttentionItem(
                         chapter_no=report.chapter_no,
@@ -434,6 +465,8 @@ class WorkflowService:
             "failed_agent_call_count": sum(item.failed_agent_call_count for item in chapter_reports),
             "manual_or_paused_chapter_count": sum(1 for item in chapter_reports if item.run_status in {"manual_review", "paused"}),
             "derived_updates_ready_count": sum(1 for item in chapter_reports if item.derived_update_status in {"completed", "partial"}),
+            "revision_policy_manual_review_count": sum(1 for item in chapter_reports if item.revision_policy_decision == "stop_for_manual_review"),
+            "quality_delta_non_pass_count": sum(1 for item in chapter_reports if item.quality_delta_decision in {"warn", "fail"}),
         }
 
         acceptance_checks: list[ChapterSequenceAcceptanceCheck] = []
@@ -869,6 +902,20 @@ class WorkflowService:
                     categories.add(category.strip())
         return sorted(categories)
 
+    def _calculate_revision_text_effectiveness(self, *, before_text: str, after_text: str) -> dict[str, float | bool]:
+        before = (before_text or "").strip()
+        after = (after_text or "").strip()
+        if not before and not after:
+            similarity = 1.0
+        else:
+            similarity = SequenceMatcher(None, before, after).ratio()
+        changed_ratio = max(0.0, min(1.0, 1.0 - similarity))
+        return {
+            "revision_similarity_score": round(similarity, 6),
+            "revision_changed_char_ratio": round(changed_ratio, 6),
+            "revision_text_changed": changed_ratio > 0.0,
+        }
+
     def _build_revision_task(self, *, draft: ChapterDraft, failed_reviews: list[GateReviewResult], next_attempt_no: int) -> dict:
         actionable_issues: list[dict] = []
         rewrite_hints: list[dict] = []
@@ -1134,10 +1181,22 @@ class WorkflowService:
                     else:
                         current_revision_no = int((result.draft.metadata or {}).get("revision_no") or 1)
                         if current_revision_no - 1 >= request.max_revision_rounds:
-                            result.run = WorkflowRun.model_validate(run)
-                            result.stage_status = "attention_required"
-                            result.next_action = "review_revision_limit"
-                            return result.model_dump(mode="json")
+                            return self._stop_cycle_for_manual_action(
+                                db=db,
+                                run=run,
+                                result=result,
+                                current_step="review_revision_limit_required",
+                                reason="自动修订轮次已达上限，需人工确认后继续",
+                                next_action="review_revision_limit",
+                                extra_metadata={
+                                    "draft_id": result.draft.id if result.draft else draft.id,
+                                    "auto_revised": False,
+                                    "revision_attempt_count": 0,
+                                    "max_revision_rounds": request.max_revision_rounds,
+                                    "stop_reason": "revision_limit_reached",
+                                    "manual_review_required": True,
+                                },
+                            )
                         attempt_count = 0
                         before_fail_count = len(failed_gate_reviews)
                         after_fail_count = before_fail_count
@@ -1152,6 +1211,7 @@ class WorkflowService:
                         policy_improvement_detected = False
                         policy_improvement_signals: list[str] = []
                         policy_max_revision_reached = False
+                        policy_requires_manual_review = False
                         while attempt_count < request.max_revision_rounds:
                             attempt_count += 1
                             revision_task = self._build_revision_task(draft=draft, failed_reviews=failed_gate_reviews, next_attempt_no=attempt_count)
@@ -1186,6 +1246,10 @@ class WorkflowService:
                             after_fail_count = sum(1 for item in last_results if item.pass_status == "failed")
                             failed_after_reviews = [item for item in last_results if item.pass_status == "failed"]
                             highest_severity_after_revision = self._highest_severity_from_reviews(failed_after_reviews)
+                            text_effectiveness = self._calculate_revision_text_effectiveness(
+                                before_text=draft.content if draft is not None else "",
+                                after_text=revised_draft.content if revised_draft is not None else "",
+                            )
                             after_issue_types = self._extract_issue_types(failed_after_reviews)
                             improved_issue_types = sorted(set(target_issue_types) - set(after_issue_types))
                             hard_blocking_exists = any(
@@ -1195,11 +1259,13 @@ class WorkflowService:
                             no_improvement_reason = (
                                 "no_improvement_detected"
                                 if (
+                                    bool(text_effectiveness.get("revision_text_changed"))
+                                    and
                                     after_fail_count >= before_fail_count
                                     and highest_severity_after_revision == highest_severity_before_revision
                                     and not improved_issue_types
                                 )
-                                else None
+                                else ("no_text_delta_after_revision" if not bool(text_effectiveness.get("revision_text_changed")) else None)
                             )
                             policy_decision = workflow_revision_policy_service.evaluate(
                                 RevisionPolicyInput(
@@ -1213,6 +1279,8 @@ class WorkflowService:
                                     max_auto_revision_rounds=request.max_revision_rounds,
                                     no_improvement_reason=no_improvement_reason,
                                     hard_blocking_exists=hard_blocking_exists,
+                                    revision_text_changed=bool(text_effectiveness.get("revision_text_changed")),
+                                    revision_changed_char_ratio=float(text_effectiveness.get("revision_changed_char_ratio") or 0.0),
                                 )
                             )
                             policy_decision_reason = policy_decision.reason
@@ -1238,6 +1306,9 @@ class WorkflowService:
                                     "improvement_detected": policy_improvement_detected,
                                     "improvement_signals": policy_improvement_signals,
                                     "max_revision_reached": policy_max_revision_reached,
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
                                     "revised_draft_id": revised_draft.id,
                                 },
                             )
@@ -1248,9 +1319,46 @@ class WorkflowService:
                                 draft = revised_draft
                                 break
                             if policy_decision.require_manual_review:
+                                policy_requires_manual_review = True
                                 break
                             failed_gate_reviews = [item for item in last_results if item.pass_status == "failed"]
                             draft = revised_draft
+                        if policy_requires_manual_review:
+                            result.gate_results = last_results
+                            result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft or draft
+                            return self._stop_cycle_for_manual_action(
+                                db=db,
+                                run=run,
+                                result=result,
+                                current_step="review_revised_draft_required",
+                                reason="修订策略判定需人工审阅后再继续",
+                                next_action="review_revised_draft",
+                                extra_metadata={
+                                    "draft_id": result.draft.id if result.draft else (revised_draft.id if revised_draft else draft.id),
+                                    "revision_attempt_count": attempt_count,
+                                    "auto_revised": True,
+                                    "gate_failures_before_revision": before_fail_count,
+                                    "gate_failures_after_revision": after_fail_count,
+                                    "highest_severity_before_revision": highest_severity_before_revision,
+                                    "highest_severity_after_revision": highest_severity_after_revision,
+                                    "revision_target_issue_types": target_issue_types,
+                                    "improved_issue_types": improved_issue_types,
+                                    "revision_policy_decision": policy_decision_name,
+                                    "revision_policy_reason": policy_decision_reason,
+                                    "improvement_detected": policy_improvement_detected,
+                                    "improvement_signals": policy_improvement_signals,
+                                    "max_revision_reached": policy_max_revision_reached,
+                                    "no_improvement_reason": (
+                                        "no_text_delta_after_revision"
+                                        if not bool(text_effectiveness.get("revision_text_changed"))
+                                        else ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None)
+                                    ),
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
+                                    "revised_draft_id": (revised_draft.id if revised_draft else None),
+                                },
+                            )
                         if after_fail_count > 0:
                             result.gate_results = last_results
                             result.draft = self._get_latest_draft(db=db, project_id=request.project_id, blueprint_id=selected_blueprint.id) or revised_draft or draft
@@ -1276,7 +1384,14 @@ class WorkflowService:
                                     "improvement_detected": policy_improvement_detected,
                                     "improvement_signals": policy_improvement_signals,
                                     "max_revision_reached": policy_max_revision_reached,
-                                    "no_improvement_reason": ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None),
+                                    "no_improvement_reason": (
+                                        "no_text_delta_after_revision"
+                                        if not bool(text_effectiveness.get("revision_text_changed"))
+                                        else ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None)
+                                    ),
+                                    "revision_similarity_score": text_effectiveness.get("revision_similarity_score"),
+                                    "revision_changed_char_ratio": text_effectiveness.get("revision_changed_char_ratio"),
+                                    "revision_text_changed": text_effectiveness.get("revision_text_changed"),
                                     "revised_draft_id": (revised_draft.id if revised_draft else None),
                                 },
                             )
