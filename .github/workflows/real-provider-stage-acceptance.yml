@@ -1,0 +1,76 @@
+name: Real Provider Stage Acceptance (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 选择 real provider 验收套件
+        required: true
+        default: real-smoke
+        type: choice
+        options:
+          - real-smoke
+          - real-acceptance
+          - all
+
+jobs:
+  real-provider-stage-acceptance:
+    name: real provider stage acceptance
+    runs-on: ubuntu-latest
+    env:
+      AGENT_PROVIDER: openai_compatible
+      AGENT_FALLBACK_TO_MOCK: "false"
+      AGENT_API_BASE_URL: ${{ vars.AGENT_API_BASE_URL }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      AGENT_MODEL: ${{ vars.AGENT_MODEL }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 执行 real provider 阶段验收
+        run: python tests/run_stage_acceptance.py --suite "${{ inputs.suite }}"
+
+      - name: 检查阶段验收输出文件
+        if: always()
+        run: |
+          shopt -s nullglob
+          summary_files=(output/stage_acceptance_summary_${{ inputs.suite }}_*.json)
+          output_files=(output/*)
+          if [ ${#summary_files[@]} -eq 0 ]; then
+            echo "::warning::未找到 summary 文件（output/stage_acceptance_summary_${{ inputs.suite }}_*.json）。"
+          else
+            echo "找到 ${#summary_files[@]} 个 summary 文件："
+            printf '%s\n' "${summary_files[@]}"
+          fi
+          if [ ${#output_files[@]} -eq 0 ]; then
+            echo "::warning::未找到 output 目录产物。"
+          else
+            echo "output 目录共 ${#output_files[@]} 个文件。"
+          fi
+
+      - name: 上传 real provider 阶段验收摘要
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-provider-stage-acceptance-summary
+          path: output/stage_acceptance_summary_${{ inputs.suite }}_*.json
+          if-no-files-found: warn
+
+      - name: 上传 real provider 阶段验收 output 工件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-provider-stage-acceptance-output
+          path: output/**
+          if-no-files-found: warn

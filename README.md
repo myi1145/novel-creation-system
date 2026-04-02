@@ -159,6 +159,9 @@ python tests/run_stage_acceptance.py --suite all
 
 说明：`real-smoke` / `real-acceptance` 继续复用现有 skip 语义；环境前置缺失时会 skip，不会误报 fail。
 
+补充：默认 GitHub Actions（push / pull_request）已接入 `core` 阶段验收，不会自动执行 `real-smoke` / `real-acceptance`。
+- real provider 的 GitHub 验收入口为手动触发 workflow_dispatch（workflow: `Real Provider Stage Acceptance (Manual)`，输入 `suite=real-smoke|real-acceptance|all`）。
+
 ---
 
 ## 7. 已知边界 / 尚未完成项
