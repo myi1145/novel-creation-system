@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from tests.real_provider_test_helper import format_recent_agent_calls, preflight_gateway_or_skip, raise_skip_unless_real_provider_ready
 
 
 class RealProviderSingleChapterRepeatAcceptanceTest(unittest.TestCase):
@@ -16,6 +17,7 @@ class RealProviderSingleChapterRepeatAcceptanceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
+        raise_skip_unless_real_provider_ready(suite_name="real-provider-single-chapter-repeat-acceptance")
 
     def _timed_post(self, url: str, payload: dict[str, Any]) -> tuple[Any, int]:
         start = time.perf_counter()
@@ -49,48 +51,10 @@ class RealProviderSingleChapterRepeatAcceptanceTest(unittest.TestCase):
         return resp.json()["data"]["id"]
 
     def _gateway_preflight(self) -> dict[str, Any]:
-        resp = self.client.get("/api/v1/workflows/agent-gateway/status")
-        self.assertEqual(resp.status_code, 200, msg="真实 provider 预检失败：无法读取 gateway 状态。")
-        data = resp.json()["data"]
-        errors = []
-        if data.get("configured_provider") != "openai_compatible":
-            errors.append(f"configured_provider={data.get('configured_provider')}")
-        if data.get("active_provider") != "openai_compatible":
-            errors.append(f"active_provider={data.get('active_provider')}")
-        if bool(data.get("fallback_active")):
-            errors.append(f"fallback_active={data.get('fallback_active')}")
-        if not bool(data.get("available")):
-            errors.append(f"available={data.get('available')}")
-        if errors:
-            self.fail(
-                "真实 provider 重复验收预检不通过（fail fast）：\n"
-                f"gateway_status={data}\n"
-                f"异常项={'; '.join(errors)}\n"
-                "请先修复真实 provider 配置后再执行重复验收。"
-            )
-        return data
+        return preflight_gateway_or_skip(self, self.client, suite_name="real-provider-single-chapter-repeat-acceptance")
 
     def _diagnostic_recent_calls(self, calls: list[dict[str, Any]], limit: int = 8) -> str:
-        rows: list[str] = []
-        for item in calls[:limit]:
-            response_summary = item.get("response_summary") if isinstance(item.get("response_summary"), dict) else {}
-            parse_report = response_summary.get("parse_report") if isinstance(response_summary, dict) else None
-            provider_error_details = response_summary.get("provider_error_details") if isinstance(response_summary, dict) else None
-            rows.append(
-                " ".join(
-                    [
-                        f"action={item.get('action_name')}",
-                        f"active={item.get('active_provider')}",
-                        f"model={item.get('model_name')}",
-                        f"status={item.get('call_status')}",
-                        f"fallback_used={item.get('fallback_used')}",
-                        f"error_type={item.get('error_type')}",
-                        f"provider_error_details={provider_error_details}",
-                        f"parse_report={parse_report}",
-                    ]
-                )
-            )
-        return "\n".join(rows)
+        return format_recent_agent_calls(calls, limit=limit)
 
     def _run_single_iteration(self, iteration_no: int) -> dict[str, Any]:
         self._gateway_preflight()
