@@ -194,6 +194,8 @@ class ExecuteChapterSequenceRequest(BaseModel):
     start_chapter_no: int = Field(ge=1)
     chapter_count: int = Field(default=3, ge=1, le=20)
     current_volume_goal: str
+    previous_chapter_summary: str | None = None
+    unresolved_open_loops: list[str] = Field(default_factory=list)
     stop_on_attention: bool = True
     stop_on_failure: bool = True
     advance_only_on_completed: bool = True
@@ -231,12 +233,17 @@ class ChapterSequenceItemResult(BaseModel):
     workflow_run_id: str
     trace_id: str
     stage_status: str
+    status: str | None = None
     next_action: str | None = None
     chapter_goal_id: str | None = None
     selected_blueprint_id: str | None = None
     draft_id: str | None = None
     changeset_id: str | None = None
+    result_snapshot_id: str | None = None
     published_chapter_id: str | None = None
+    latest_summary: str | None = None
+    latest_next_chapter_seed: str | None = None
+    derived_update_status: str | None = None
     chapter_summary: ChapterSummary | None = None
     chapter_result: ExecuteChapterCycleResult
 
@@ -244,12 +251,17 @@ class ChapterSequenceItemResult(BaseModel):
 class ExecuteChapterSequenceResult(BaseModel):
     run: WorkflowRun
     stage_status: str
+    batch_status: str | None = None
     next_action: str | None = None
     stop_reason: str | None = None
     processed_chapter_count: int = 0
     completed_chapter_count: int = 0
     failed_chapter_count: int = 0
     attention_chapter_count: int = 0
+    revised_chapter_count: int = 0
+    requested_chapter_count: int = 0
+    stopped_at_chapter_no: int | None = None
+    summary_message: str | None = None
     chapter_results: list[ChapterSequenceItemResult] = Field(default_factory=list)
 
 
