@@ -12,13 +12,14 @@
 
 ## 2. 当前阶段定位
 
-当前分支处于：**工程联调 + 质量闸门增强阶段**。
+当前分支处于：**修订执行层收口 + 修订决策层起步阶段**。
 
 更准确地说：
 
 - 单章主链（目标 -> 蓝图 -> 场景 -> 草稿 -> Gate -> ChangeSet -> Publish）已经能跑通并可验收；
-- 同一 project 的连续章节链路（含 continuity 输入）已打通；
-- 质量闸门已补到 Narrative / Publish 及 Delta / Seed / Character Voice / Style 等方向，但整体仍以结构化检测与显式报告为主，尚未到“V1 全量完成 / 生产化收口”。
+- 修订执行层已基本收口，revision policy 决策开始被 workflow 真实消费并驱动分流；
+- Publish Delta Gate 已从伪比较切到真实 baseline 比较，sequence 报告层开始暴露单章关键决策结果；
+- 真实 provider 联调与生产化验收仍是下一阶段重点，当前不应视为稳定生产自治系统。
 
 ---
 
@@ -57,11 +58,20 @@
    - Seed Consumption Gate（叙事承接检测）；
    - Character Voice Gate；
    - Style Gate。
-6. **真实 provider 联调能力**
+6. **revision policy 已进入 workflow 决策**
+   - 已输出 `revision_policy_decision` / `revision_policy_reason` / `revision_text_changed` / `revision_attempt_count`；
+   - 可影响 `next_action` 与 `attention_required` 分流（如 `continue` / `retry` / `stop_for_manual_review`），修订文本未变化会进入人工审阅。
+7. **Publish Delta Gate 已使用真实 baseline 比较**
+   - baseline 优先级：`predecessor_draft -> previous_published_chapter -> baseline_unavailable`；
+   - baseline 来源与引用会写入 `publish_metadata`（`delta_baseline_source` / `delta_baseline_ref_id` / `delta_baseline_reason`）供审计与报告消费。
+8. **sequence 报告已暴露单章关键决策字段**
+   - 包含 `revision_policy_decision` / `revision_policy_reason` / `no_improvement_reason` / `revision_text_changed` / `revision_attempt_count`；
+   - 同时暴露 `quality_delta_decision` / `delta_baseline_source`。
+9. **真实 provider 联调能力**
    - 支持 `openai_compatible` provider；
    - 提供 gateway 状态检查、调用日志、治理统计（重试 / 限流 / 熔断 / fallback 观测）；
    - 已有真实 provider 单章与连续章节验收测试。
-7. **验收导出工件（测试侧）**
+10. **验收导出工件（测试侧）**
    - 连续章节真实 provider 验收会将章节正文与摘要导出到 `output/...` 目录，便于人工复核与回归对比。
 
 ### 4.2 当前仍在增强
@@ -69,6 +79,8 @@
 - 多数质量闸门当前仍是“最小可用 + 启发式规则 + 结构化报告优先”，不是完整文学评审系统；
 - 已有检测能力不等于自动修复闭环：并非所有问题都会自动进入稳定重写链路；
 - 默认配置仍偏联调（如 `mock` provider + 可 fallback）；真实模型效果依赖外部环境与参数；
+- 默认回归仍以 mock provider 为主；真实 provider 需单独配置并按 smoke / acceptance 入口验收，不能视为开箱即跑；
+- 当前阶段目标仍是“真实 provider 联调 + 生产化验收基线”持续补齐，不应高估为 fully autonomous production system；
 - 存储层目前以 `AUTO_CREATE_TABLES` 为主，尚未集成 Alembic 迁移链路；
 - 运维级能力（多环境发布策略、长期稳定性基线、平台化治理）仍有限。
 
@@ -83,6 +95,7 @@
   - 支持失败分级（S0~S4）、推荐处理路径、人工可覆盖信息。
 - **Delta Gate（Publish 质量增益）**：
   - 基于 draft/published 相似度、改动段落数、未解决关键问题等给出 pass/warn/fail；
+  - baseline 优先级为 `predecessor_draft -> previous_published_chapter -> baseline_unavailable`，并将来源写入 `publish_metadata` 供审计与 sequence 报告消费；
   - strict 配置下可阻断发布。
 - **Seed Consumption Gate**：
   - 检查上一章 `next_chapter_seed` 在当前章的承接情况（consumed / weak / missing）；
@@ -110,6 +123,18 @@
 - workflow sequence 恢复 / manual continue / idempotency 相关测试。
 
 这些测试的定位是：验证“链路可跑通 + 检测结果可复现 + 回归可执行”，不是证明“创作质量已全面自动达标”。
+
+### 6.1 关键测试锚点（本阶段）
+
+- `tests/test_workflow_revision_effectiveness.py`：验证 revision policy 已进入 workflow 决策，并在“无改进/文本未变化”等场景触发人工审阅分流。
+- `tests/test_publish_quality_delta_gate.py`：验证 Publish Delta Gate 已使用真实 baseline 比较，并把 baseline 来源写入 `publish_metadata`。
+- `tests/test_workflow_sequence_cycle_closure.py`：验证 sequence 报告已显式暴露单章修订决策与质量增益（delta）关键字段。
+
+### 6.2 真实 provider 验收入口（提醒）
+
+- 仓库内存在真实 provider 的 smoke / acceptance 测试入口；
+- 这些用例依赖外部环境配置（模型、密钥、网络等）；
+- 应与默认 mock 回归分开看待，不代表默认配置开箱即跑。
 
 ---
 
