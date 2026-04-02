@@ -72,6 +72,7 @@ from app.services.gate_service import gate_service
 from app.services.provider_governance_service import provider_governance_service
 from app.services.publish_service import publish_service
 from app.services.workflow_run_service import workflow_run_service
+from app.services.workflow_revision_policy import RevisionPolicyInput, workflow_revision_policy_service
 
 logger = get_logger("workflow")
 
@@ -1146,6 +1147,11 @@ class WorkflowService:
                         improved_issue_types: list[str] = []
                         revised_draft: ChapterDraft | None = None
                         last_results = gate_results
+                        policy_decision_reason = None
+                        policy_decision_name = None
+                        policy_improvement_detected = False
+                        policy_improvement_signals: list[str] = []
+                        policy_max_revision_reached = False
                         while attempt_count < request.max_revision_rounds:
                             attempt_count += 1
                             revision_task = self._build_revision_task(draft=draft, failed_reviews=failed_gate_reviews, next_attempt_no=attempt_count)
@@ -1182,6 +1188,38 @@ class WorkflowService:
                             highest_severity_after_revision = self._highest_severity_from_reviews(failed_after_reviews)
                             after_issue_types = self._extract_issue_types(failed_after_reviews)
                             improved_issue_types = sorted(set(target_issue_types) - set(after_issue_types))
+                            hard_blocking_exists = any(
+                                str(item.highest_severity or "").upper() == "S3" or (not self._is_fixable_gate_failure(item))
+                                for item in failed_after_reviews
+                            )
+                            no_improvement_reason = (
+                                "no_improvement_detected"
+                                if (
+                                    after_fail_count >= before_fail_count
+                                    and highest_severity_after_revision == highest_severity_before_revision
+                                    and not improved_issue_types
+                                )
+                                else None
+                            )
+                            policy_decision = workflow_revision_policy_service.evaluate(
+                                RevisionPolicyInput(
+                                    gate_failures_before_revision=before_fail_count,
+                                    gate_failures_after_revision=after_fail_count,
+                                    highest_severity_before_revision=highest_severity_before_revision,
+                                    highest_severity_after_revision=highest_severity_after_revision,
+                                    revision_target_issue_types=target_issue_types,
+                                    improved_issue_types=improved_issue_types,
+                                    revision_attempt_count=attempt_count,
+                                    max_auto_revision_rounds=request.max_revision_rounds,
+                                    no_improvement_reason=no_improvement_reason,
+                                    hard_blocking_exists=hard_blocking_exists,
+                                )
+                            )
+                            policy_decision_reason = policy_decision.reason
+                            policy_decision_name = policy_decision.decision
+                            policy_improvement_detected = policy_decision.improvement_detected
+                            policy_improvement_signals = list(policy_decision.improvement_signals)
+                            policy_max_revision_reached = policy_decision.max_revision_reached
                             run = self._record_cycle_state(
                                 db=db,
                                 run=run,
@@ -1195,18 +1233,23 @@ class WorkflowService:
                                     "highest_severity_after_revision": highest_severity_after_revision,
                                     "revision_target_issue_types": target_issue_types,
                                     "improved_issue_types": improved_issue_types,
+                                    "revision_policy_decision": policy_decision_name,
+                                    "revision_policy_reason": policy_decision_reason,
+                                    "improvement_detected": policy_improvement_detected,
+                                    "improvement_signals": policy_improvement_signals,
+                                    "max_revision_reached": policy_max_revision_reached,
                                     "revised_draft_id": revised_draft.id,
                                 },
                             )
-                            if after_fail_count == 0:
+                            if policy_decision.continue_pipeline:
                                 result.draft = revised_draft
                                 result.gate_results = last_results
                                 gate_results = last_results
                                 draft = revised_draft
                                 break
-                            failed_gate_reviews = [item for item in last_results if item.pass_status == "failed"]
-                            if any(not self._is_fixable_gate_failure(item) for item in failed_gate_reviews):
+                            if policy_decision.require_manual_review:
                                 break
+                            failed_gate_reviews = [item for item in last_results if item.pass_status == "failed"]
                             draft = revised_draft
                         if after_fail_count > 0:
                             result.gate_results = last_results
@@ -1228,6 +1271,11 @@ class WorkflowService:
                                     "highest_severity_after_revision": highest_severity_after_revision,
                                     "revision_target_issue_types": target_issue_types,
                                     "improved_issue_types": improved_issue_types,
+                                    "revision_policy_decision": policy_decision_name,
+                                    "revision_policy_reason": policy_decision_reason,
+                                    "improvement_detected": policy_improvement_detected,
+                                    "improvement_signals": policy_improvement_signals,
+                                    "max_revision_reached": policy_max_revision_reached,
                                     "no_improvement_reason": ("gate_failures_not_reduced" if after_fail_count >= before_fail_count else None),
                                     "revised_draft_id": (revised_draft.id if revised_draft else None),
                                 },
