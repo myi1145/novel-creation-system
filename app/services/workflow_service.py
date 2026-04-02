@@ -1149,10 +1149,22 @@ class WorkflowService:
                     else:
                         current_revision_no = int((result.draft.metadata or {}).get("revision_no") or 1)
                         if current_revision_no - 1 >= request.max_revision_rounds:
-                            result.run = WorkflowRun.model_validate(run)
-                            result.stage_status = "attention_required"
-                            result.next_action = "review_revision_limit"
-                            return result.model_dump(mode="json")
+                            return self._stop_cycle_for_manual_action(
+                                db=db,
+                                run=run,
+                                result=result,
+                                current_step="review_revision_limit_required",
+                                reason="自动修订轮次已达上限，需人工确认后继续",
+                                next_action="review_revision_limit",
+                                extra_metadata={
+                                    "draft_id": result.draft.id if result.draft else draft.id,
+                                    "auto_revised": False,
+                                    "revision_attempt_count": 0,
+                                    "max_revision_rounds": request.max_revision_rounds,
+                                    "stop_reason": "revision_limit_reached",
+                                    "manual_review_required": True,
+                                },
+                            )
                         attempt_count = 0
                         before_fail_count = len(failed_gate_reviews)
                         after_fail_count = before_fail_count
