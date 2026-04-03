@@ -116,6 +116,21 @@
 
 ---
 
+### 3.5 Alembic 迁移链路 CI 基线收口已完成（空库升级强校验）
+
+已完成迁移基线接入默认 CI，包括：
+
+- 在默认 `core-stage-acceptance` workflow 增加 migration smoke gate
+- CI 干净 SQLite 路径真实执行 `alembic upgrade head`（Python entrypoint 方式）
+- 迁移测试从“CLI 缺失可 skip”收紧为 Python 可控 entrypoint 的真实执行路径
+- 迁移失败将直接导致 CI 失败并阻断合并
+
+结论：
+
+**Alembic 迁移已从“本地可跑”推进到“CI 强校验门槛”。**
+
+---
+
 ## 4. 当前不要再动的区域
 
 除非出现明确 bug 或回归，否则当前不要再把主要精力投到下面这些区域：
@@ -180,18 +195,17 @@
 
 ### 下一步唯一目标
 
-**收口 Alembic 数据库迁移链路，弱化 `AUTO_CREATE_TABLES` 为开发兜底选项。**
+**收口 CI 迁移基线：把“空数据库 `alembic upgrade head`”固化为默认 CI 强校验门槛。**
 
 一句话解释：
 
-当前系统虽然已经能联调、能验收、能跑真实 provider，  
-但数据库 schema 仍偏“联调态”。  
-下一步必须把数据层推进到：
+当前系统虽然已经完成 Alembic baseline 与初始化主路径切换，  
+但迁移链路尚未成为稳定 CI 合并门槛。  
+下一步必须把“空库升级到 head”推进到默认 CI 强校验：
 
-- 可升级
-- 可回滚
-- 可控变更
-- 可在新环境稳定初始化
+- CI 干净环境真实执行 `alembic upgrade head`
+- 迁移失败可直接让 PR 变红
+- 迁移 smoke test 与阶段验收并行固化
 
 ---
 
@@ -199,15 +213,14 @@
 
 ### 任务名称
 
-**Alembic 迁移链路收口**
+**CI 迁移基线收口（Migration Smoke Gate）**
 
 ### 本次只做什么
 
-- 建立正式 Alembic 配置
-- 生成 baseline migration
-- 明确应用初始化与 schema 升级路径
-- 把 `AUTO_CREATE_TABLES` 从主路径退到开发兜底路径
-- 更新 README 与阶段文档
+- 在默认 CI 中增加 migration smoke gate（空库 upgrade head）
+- 固化 Python 可控 Alembic entrypoint 的执行路径，避免依赖本地 CLI 安装偶然性
+- 收紧迁移测试，确保 CI 中不以 skip 替代真实升级
+- 更新阶段文档，明确本轮结果与下一步口径
 
 ### 本次不要做什么
 

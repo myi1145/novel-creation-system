@@ -23,6 +23,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: 执行数据库迁移基线检查（空库 upgrade head）
+        env:
+          DATABASE_URL: sqlite:///${{ runner.temp }}/ci_migration_smoke.db
+          PYTHONPATH: ${{ github.workspace }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          rm -f "${{ runner.temp }}/ci_migration_smoke.db"
+          python -c "from alembic.config import main; main(argv=['-c', '${{ github.workspace }}/alembic.ini', 'upgrade', 'head'])"
+          python -m unittest tests.test_alembic_migration_path
+
       - name: 执行 core 阶段验收
         run: python tests/run_stage_acceptance.py --suite core
 
