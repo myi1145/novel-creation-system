@@ -319,6 +319,26 @@ preflight 重点检查项：
 - 全局健康：`GET /health`
 - API 连通性：`GET /api/v1/ping`
 
+### 9.7 real-provider / prod 运行期验收与回滚入口（最小闭环）
+
+运行手册见：`md/status/runbook_real_provider_prod.md`。
+
+推荐统一入口（可执行+可演练）：
+
+```bash
+# real-provider 联调验收
+python scripts/runbook_checks.py --env real-provider --env-file .env --stage-suite real-smoke
+
+# prod 放行前验收（服务已启动时加 health 检查）
+python scripts/runbook_checks.py --env prod --env-file .env --health-url http://127.0.0.1:8000/health --stage-suite real-acceptance
+```
+
+入口阻断语义：
+
+- preflight / migration / health 失败：禁止启动或禁止继续放行；
+- real-provider 验收失败：禁止放行 prod，回到 real-provider 联调态排查；
+- prod 安全默认值不满足：直接拒绝启动。
+
 ---
 
 ## 10. 配置说明（`.env`）

@@ -351,19 +351,26 @@ README 只负责：
 - real-provider 验收工件归属防串档已完成
 
 本次唯一目标：
-- 收口环境分层与启动模式语义，明确 dev / ci / real-provider / prod 四类模式边界
+- 收口“真实 provider / prod 运行期验收与回滚演练”最小闭环
 
 不要做：
 - 不改 workflow 主链逻辑
 - 不改 gate / publish / changeset 规则
-- 不改 provider gateway
+- 不改 provider gateway 核心业务逻辑
 - 不做容器化/监控/权限系统
 
+重点改动对象：
+- README.md
+- /md/status/current_stage_handoff.md
+- /md/status/runbook_real_provider_prod.md
+- scripts/runbook_checks.py（如需脚本入口）
+
 验收标准：
-- dev / ci / real-provider / prod 四类模式默认语义清晰
-- 非开发模式的危险默认值可被配置校验拦截
-- README 写清环境分层启动方式与关键变量
-- /md/status/current_stage_handoff.md 更新任务结果
+- 仓库存在明确的 real-provider / prod 运行期验收与回滚说明
+- 至少存在一个最小可执行入口（脚本或明确命令序列）
+- 明确区分：禁止启动 / 禁止放行 prod / 回退到 real-provider 联调态
+- README 与 handoff 都能找到入口
+- handoff 第 11 节模板已翻到当前目标
 
 输出要求：
 1. 说明理解
@@ -379,14 +386,17 @@ README 只负责：
 
 本轮任务已完成以下收口项：
 
-- 已建立正式 Alembic 迁移链路（`alembic.ini`、`alembic/env.py`、baseline migration）。
-- 已明确迁移主路径为 `alembic upgrade head`（空库初始化与已有库升级统一走迁移链路）。
-- 应用启动时默认不再走自动建表；`AUTO_CREATE_TABLES` 已降级为开发兜底开关（默认 `false`）。
-- 默认 CI（core stage acceptance）已接入空库 `alembic upgrade head` 强校验门槛。
-- README 已更新“新库初始化 / 已有库升级 / 开发兜底”命令与语义。
+- 新增 real-provider / prod 运行期最小手册：`md/status/runbook_real_provider_prod.md`。
+- 新增统一可执行入口：`scripts/runbook_checks.py`（preflight → migration → health(可选) → stage acceptance）。
+- 明确失败分级：
+  - preflight / migration / prod 安全默认值：禁止启动；
+  - health / real-provider 验收失败：禁止放行 prod，回退 real-provider 联调态。
+- README 已新增运行期验收与回滚入口说明，并链接到 runbook。
+- 第 11 节任务模板已翻新到“运行期验收与回滚演练”目标，避免继续下发旧模板。
 
 最小验证口径：
 
-- migration smoke test：通过（空 sqlite 可 `alembic upgrade head`）。
-- config/init path test：通过（关闭 `AUTO_CREATE_TABLES` 且无 schema 时启动失败并提示迁移命令）。
-- 开发兜底回归：通过（`AUTO_CREATE_TABLES=true` 时应用可自动建表并启动）。
+- 新增 `tests/test_runtime_runbook.py` 覆盖：
+  - preflight 成功路径；
+  - preflight 失败阻断路径；
+  - migration 未就绪阻断提示路径。
