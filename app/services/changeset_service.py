@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.business_logging import StepLogScope
 from app.core.config import settings
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import (
@@ -26,7 +26,7 @@ from app.db.models import (
     ChapterDraftORM,
 )
 from app.domain.enums import ChangeSetStatus, ChapterStatus, GateName
-from app.schemas.changeset import ChangeSet, ChangeSetProposal, GenerateChangeSetProposalRequest, ProposeChangeSetRequest
+from app.schemas.changeset import ChangeSet, ChangeSetApplyRecoveryEvent, ChangeSetProposal, GenerateChangeSetProposalRequest, ProposeChangeSetRequest
 from app.services.agent_gateway import AgentGatewayError, agent_gateway
 from app.services.chapter_state_service import chapter_state_service
 from app.services.object_service import object_service
@@ -51,6 +51,37 @@ logger = get_logger("workflow")
 
 class ChangeSetService:
     _REQUIRED_PROPOSAL_GATES = [GateName.SCHEMA.value, GateName.CANON.value, GateName.NARRATIVE.value]
+    _APPLY_RECOVERY_EVENT_TYPES = ("changeset_apply_recovered_to_applied", "changeset_apply_recovered_to_approved")
+
+    def list_apply_recovery_events(
+        self,
+        db: Session,
+        *,
+        project_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = 50,
+    ) -> list[ChangeSetApplyRecoveryEvent]:
+        if event_type is not None and event_type not in self._APPLY_RECOVERY_EVENT_TYPES:
+            raise ValidationError("event_type 仅支持 changeset_apply_recovered_to_applied 或 changeset_apply_recovered_to_approved")
+        query = db.query(ImmutableLogORM).filter(ImmutableLogORM.event_type.in_(self._APPLY_RECOVERY_EVENT_TYPES))
+        if project_id:
+            query = query.filter(ImmutableLogORM.project_id == project_id)
+        if event_type:
+            query = query.filter(ImmutableLogORM.event_type == event_type)
+        rows = query.order_by(ImmutableLogORM.created_at.desc()).limit(limit).all()
+        return [
+            ChangeSetApplyRecoveryEvent(
+                id=row.id,
+                event_type=row.event_type,
+                project_id=row.project_id,
+                workflow_run_id=row.workflow_run_id,
+                trace_id=row.trace_id,
+                changeset_id=(row.event_payload or {}).get("changeset_id"),
+                created_at=row.created_at,
+                recovery_payload=dict(row.event_payload or {}),
+            )
+            for row in rows
+        ]
 
     def generate_proposal(self, db: Session, request: GenerateChangeSetProposalRequest) -> ChangeSetProposal:
         project = db.get(ProjectORM, request.project_id)

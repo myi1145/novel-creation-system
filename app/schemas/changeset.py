@@ -94,4 +94,15 @@ class ChangeSet(IdentifiedModel):
     rollback_snapshot_id: str | None = None
 
 
+class ChangeSetApplyRecoveryEvent(BaseModel):
+    id: int
+    event_type: str
+    project_id: str
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+    changeset_id: str | None = None
+    created_at: datetime
+    recovery_payload: dict[str, Any] = Field(default_factory=dict)
+
+
 ChangeSetProposal.model_rebuild()

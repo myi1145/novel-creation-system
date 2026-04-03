@@ -196,6 +196,62 @@ class ChangeSetApplyGuardrailsTest(unittest.TestCase):
         self.assertEqual(data["status"], "applied")
         self.assertTrue(data["result_snapshot_id"])
 
+    def test_recovery_events_api_should_list_events_with_project_filter_and_limit(self):
+        project_id = self._create_project_with_canon()
+        approved_changeset = self._prepare_approved_changeset(project_id)
+
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        with SessionLocal() as db:
+            (
+                db.query(ChangeSetORM)
+                .filter(ChangeSetORM.id == approved_changeset["id"])
+                .update({ChangeSetORM.status: "applying", ChangeSetORM.updated_at: stale_time}, synchronize_session=False)
+            )
+            db.commit()
+        stale_recover_resp = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
+        self.assertEqual(stale_recover_resp.status_code, 200)
+        applied_snapshot_id = stale_recover_resp.json()["data"]["result_snapshot_id"]
+
+        with SessionLocal() as db:
+            row = db.get(ChangeSetORM, approved_changeset["id"])
+            row.status = "applying"
+            row.result_snapshot_id = applied_snapshot_id
+            db.commit()
+        apply_recover_resp = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
+        self.assertEqual(apply_recover_resp.status_code, 200)
+
+        project_2_id = self._create_project_with_canon()
+        approved_changeset_2 = self._prepare_approved_changeset(project_2_id)
+        with SessionLocal() as db:
+            (
+                db.query(ChangeSetORM)
+                .filter(ChangeSetORM.id == approved_changeset_2["id"])
+                .update(
+                    {
+                        ChangeSetORM.status: "applying",
+                        ChangeSetORM.updated_at: stale_time,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            db.commit()
+        project_2_recover_resp = self.client.post(f"/api/v1/changesets/{approved_changeset_2['id']}/apply")
+        self.assertEqual(project_2_recover_resp.status_code, 200)
+
+        list_resp = self.client.get(f"/api/v1/changesets/recovery-events?project_id={project_id}&limit=10")
+        self.assertEqual(list_resp.status_code, 200)
+        events = list_resp.json()["data"]
+        self.assertGreaterEqual(len(events), 2)
+        self.assertTrue(all(event["project_id"] == project_id for event in events))
+        event_types = {event["event_type"] for event in events}
+        self.assertIn("changeset_apply_recovered_to_applied", event_types)
+        self.assertIn("changeset_apply_recovered_to_approved", event_types)
+        self.assertTrue(all(event["changeset_id"] for event in events))
+
+        limited_resp = self.client.get("/api/v1/changesets/recovery-events?limit=1")
+        self.assertEqual(limited_resp.status_code, 200)
+        self.assertEqual(len(limited_resp.json()["data"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

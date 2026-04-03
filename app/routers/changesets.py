@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -43,3 +43,22 @@ def rollback_changeset(changeset_id: str, request: RollbackChangeSetRequest, db:
 def list_changesets(db: Session = Depends(get_db)) -> dict:
     changesets = [item.model_dump(mode="json") for item in changeset_service.list_changesets(db=db)]
     return success_response(data=changesets)
+
+
+@router.get("/recovery-events")
+def list_changeset_apply_recovery_events(
+    project_id: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> dict:
+    events = [
+        item.model_dump(mode="json")
+        for item in changeset_service.list_apply_recovery_events(
+            db=db,
+            project_id=project_id,
+            event_type=event_type,
+            limit=limit,
+        )
+    ]
+    return success_response(data=events)
