@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.core.business_logging import StepLogScope
+from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
@@ -354,6 +355,13 @@ class ChangeSetService:
         logger.info("ChangeSet 已驳回", extra={"extra_fields": {"event": "changeset.reject", "status": "success", "workflow_run_id": changeset.workflow_run_id, "summary": f"changeset_id={changeset.id}"}})
         return ChangeSet.model_validate(changeset)
 
+    def _as_utc(self, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     def apply(self, db: Session, changeset_id: str) -> ChangeSet:
         set_log_context(module="changeset_service", event="changeset.apply", status="started")
         scope = StepLogScope(
@@ -375,7 +383,53 @@ class ChangeSetService:
             )
             return ChangeSet.model_validate(changeset)
         if changeset.status == ChangeSetStatus.APPLYING.value:
-            raise ConflictError("当前 ChangeSet 正在应用中，请等待当前执行完成后再重试")
+            if changeset.result_snapshot_id:
+                result_snapshot = db.get(CanonSnapshotORM, changeset.result_snapshot_id)
+                if result_snapshot is None:
+                    raise ConflictError("ChangeSet 处于 applying 且存在 result_snapshot_id，但对应快照不存在，请人工排查")
+                changeset.status = ChangeSetStatus.APPLIED.value
+                if changeset.applied_at is None:
+                    changeset.applied_at = result_snapshot.created_at
+                workflow_run_service.update_progress(db=db, run=changeset.workflow_run_id, current_step="changeset_applied")
+                db.add(
+                    ImmutableLogORM(
+                        event_type="changeset_apply_recovered_to_applied",
+                        project_id=changeset.project_id,
+                        workflow_run_id=changeset.workflow_run_id,
+                        trace_id=changeset.trace_id,
+                        event_payload={"changeset_id": changeset.id, "result_snapshot_id": changeset.result_snapshot_id},
+                    )
+                )
+                db.commit()
+                db.refresh(changeset)
+                scope.success(
+                    "ChangeSet applying 恢复收口为 applied（检测到 result_snapshot_id）",
+                    workflow_run_id=changeset.workflow_run_id,
+                    changeset_id=changeset.id,
+                    summary=f"result_snapshot_id={changeset.result_snapshot_id}",
+                )
+                return ChangeSet.model_validate(changeset)
+
+            reference_time = self._as_utc(changeset.updated_at or changeset.created_at)
+            recover_after = timedelta(seconds=settings.changeset_apply_recovery_timeout_seconds)
+            if reference_time is not None and datetime.now(timezone.utc) - reference_time >= recover_after:
+                changeset.status = ChangeSetStatus.APPROVED.value
+                db.add(
+                    ImmutableLogORM(
+                        event_type="changeset_apply_recovered_to_approved",
+                        project_id=changeset.project_id,
+                        workflow_run_id=changeset.workflow_run_id,
+                        trace_id=changeset.trace_id,
+                        event_payload={
+                            "changeset_id": changeset.id,
+                            "reference_time": reference_time.isoformat(),
+                            "recovery_timeout_seconds": settings.changeset_apply_recovery_timeout_seconds,
+                        },
+                    )
+                )
+                db.flush()
+            else:
+                raise ConflictError("当前 ChangeSet 正在应用中，请等待当前执行完成后再重试")
         if changeset.status != ChangeSetStatus.APPROVED.value:
             raise ConflictError("只有 approved 状态的 ChangeSet 才能应用")
         draft = db.get(ChapterDraftORM, changeset.source_ref)

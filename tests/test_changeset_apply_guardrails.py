@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -149,6 +150,51 @@ class ChangeSetApplyGuardrailsTest(unittest.TestCase):
         inflight_resp = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
         self.assertEqual(inflight_resp.status_code, 409)
         self.assertIn("正在应用中", inflight_resp.json()["error"]["message"])
+
+    def test_apply_should_recover_to_applied_when_snapshot_already_exists(self):
+        project_id = self._create_project_with_canon()
+        approved_changeset = self._prepare_approved_changeset(project_id)
+
+        first_apply = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
+        self.assertEqual(first_apply.status_code, 200)
+        applied = first_apply.json()["data"]
+        self.assertTrue(applied["result_snapshot_id"])
+
+        with SessionLocal() as db:
+            changeset_row = db.get(ChangeSetORM, approved_changeset["id"])
+            changeset_row.status = "applying"
+            db.commit()
+
+        recovered_resp = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
+        self.assertEqual(recovered_resp.status_code, 200)
+        recovered = recovered_resp.json()["data"]
+        self.assertEqual(recovered["status"], "applied")
+        self.assertEqual(recovered["result_snapshot_id"], applied["result_snapshot_id"])
+
+    def test_apply_should_recover_stale_applying_back_to_approved_and_continue(self):
+        project_id = self._create_project_with_canon()
+        approved_changeset = self._prepare_approved_changeset(project_id)
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+        with SessionLocal() as db:
+            (
+                db.query(ChangeSetORM)
+                .filter(ChangeSetORM.id == approved_changeset["id"])
+                .update(
+                    {
+                        ChangeSetORM.status: "applying",
+                        ChangeSetORM.updated_at: stale_time,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            db.commit()
+
+        recovered_apply = self.client.post(f"/api/v1/changesets/{approved_changeset['id']}/apply")
+        self.assertEqual(recovered_apply.status_code, 200)
+        data = recovered_apply.json()["data"]
+        self.assertEqual(data["status"], "applied")
+        self.assertTrue(data["result_snapshot_id"])
 
 
 if __name__ == "__main__":
