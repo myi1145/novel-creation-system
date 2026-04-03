@@ -75,4 +75,12 @@ jobs:
           name: real-provider-stage-acceptance-output
           path: output/**
           if-no-files-found: warn
+
+      - name: 上传 real provider 可归档工件目录
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-provider-stage-acceptance-artifacts
+          path: output/*_artifacts_*/**
+          if-no-files-found: warn
           
