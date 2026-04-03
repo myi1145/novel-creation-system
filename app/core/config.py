@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     character_voice_gate_strict: bool = False
     enable_style_gate: bool = True
     style_gate_strict: bool = False
+    changeset_apply_recovery_timeout_seconds: int = Field(default=300, ge=30, le=86400)
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -18,6 +18,7 @@ class ChapterStatus(str, Enum):
 class ChangeSetStatus(str, Enum):
     PROPOSED = "proposed"
     APPROVED = "approved"
+    APPLYING = "applying"
     APPLIED = "applied"
     REJECTED = "rejected"
     ROLLED_BACK = "rolled_back"
