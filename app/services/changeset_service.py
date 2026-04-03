@@ -366,10 +366,40 @@ class ChangeSetService:
         changeset = db.get(ChangeSetORM, changeset_id)
         if changeset is None:
             raise NotFoundError("ChangeSet 不存在")
+        if changeset.status == ChangeSetStatus.APPLIED.value and changeset.result_snapshot_id:
+            scope.success(
+                "ChangeSet 已处于 applied，返回既有结果（幂等命中）",
+                workflow_run_id=changeset.workflow_run_id,
+                changeset_id=changeset.id,
+                summary=f"result_snapshot_id={changeset.result_snapshot_id}",
+            )
+            return ChangeSet.model_validate(changeset)
+        if changeset.status == ChangeSetStatus.APPLYING.value:
+            raise ConflictError("当前 ChangeSet 正在应用中，请等待当前执行完成后再重试")
         if changeset.status != ChangeSetStatus.APPROVED.value:
             raise ConflictError("只有 approved 状态的 ChangeSet 才能应用")
         draft = db.get(ChapterDraftORM, changeset.source_ref)
         try:
+            claim_count = (
+                db.query(ChangeSetORM)
+                .filter(ChangeSetORM.id == changeset.id, ChangeSetORM.status == ChangeSetStatus.APPROVED.value)
+                .update({ChangeSetORM.status: ChangeSetStatus.APPLYING.value}, synchronize_session=False)
+            )
+            db.flush()
+            db.refresh(changeset)
+            if claim_count != 1:
+                if changeset.status == ChangeSetStatus.APPLIED.value and changeset.result_snapshot_id:
+                    scope.success(
+                        "ChangeSet 并发应用已完成，返回既有结果（幂等命中）",
+                        workflow_run_id=changeset.workflow_run_id,
+                        changeset_id=changeset.id,
+                        summary=f"result_snapshot_id={changeset.result_snapshot_id}",
+                    )
+                    return ChangeSet.model_validate(changeset)
+                if changeset.status == ChangeSetStatus.APPLYING.value:
+                    raise ConflictError("当前 ChangeSet 正在应用中，请等待当前执行完成后再重试")
+                raise ConflictError("ChangeSet 状态已变化，当前请求不能继续应用")
+
             self._ensure_gate_requirements(db=db, changeset=changeset)
 
             latest_snapshot = (
