@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+CURRENT_SEQUENCE_ARTIFACT_MANIFEST = Path("output") / "current_real_provider_sequence_artifact.json"
+
 CORE_TESTS = [
     "tests.test_workflow_revision_effectiveness",
     "tests.test_publish_quality_delta_gate",
@@ -232,6 +234,7 @@ def _write_real_provider_artifacts(
     suite_arg: str,
     summary_path: Path,
     suite_results: list[dict[str, Any]],
+    suite_started_at: datetime,
 ) -> Path:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     artifact_dir = Path("output") / f"{suite_arg}_artifacts_{ts}"
@@ -256,11 +259,11 @@ def _write_real_provider_artifacts(
     )
     (artifact_dir / "failure_summary.json").write_text(json.dumps(failure_summary, ensure_ascii=False, indent=2), encoding="utf-8")
     (artifact_dir / "failure_summary.md").write_text(failure_markdown, encoding="utf-8")
-    sequence_acceptance_dirs = sorted(Path("output").glob("real_provider_sequence_acceptance/*"))
-    latest_sequence_dir = sequence_acceptance_dirs[-1] if sequence_acceptance_dirs else None
-    if latest_sequence_dir is not None:
+    sequence_binding = _resolve_current_sequence_artifact_binding(suite_started_at=suite_started_at)
+    sequence_artifact_dir = Path(sequence_binding["artifact_dir"]) if sequence_binding.get("artifact_dir") else None
+    if sequence_artifact_dir is not None:
         for file_name in ["acceptance_summary.json", "sequence_batch_report.json"]:
-            source_file = latest_sequence_dir / file_name
+            source_file = sequence_artifact_dir / file_name
             if source_file.exists():
                 (artifact_dir / f"real_provider_{file_name}").write_text(source_file.read_text(encoding="utf-8"), encoding="utf-8")
 
@@ -280,7 +283,7 @@ def _write_real_provider_artifacts(
                     "real_provider_acceptance_summary.json",
                     "real_provider_sequence_batch_report.json",
                 ],
-                "latest_sequence_acceptance_dir": latest_sequence_dir.as_posix() if latest_sequence_dir else None,
+                "sequence_artifact_binding": sequence_binding,
             },
             ensure_ascii=False,
             indent=2,
@@ -290,12 +293,76 @@ def _write_real_provider_artifacts(
     return artifact_dir
 
 
+def _resolve_current_sequence_artifact_binding(*, suite_started_at: datetime) -> dict[str, Any]:
+    if not CURRENT_SEQUENCE_ARTIFACT_MANIFEST.exists():
+        return {"status": "missing_manifest", "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix()}
+
+    try:
+        payload = json.loads(CURRENT_SEQUENCE_ARTIFACT_MANIFEST.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return {
+            "status": "invalid_manifest",
+            "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+            "reason": str(exc),
+        }
+
+    artifact_dir = payload.get("artifact_dir")
+    generated_at = payload.get("generated_at")
+    if not artifact_dir or not generated_at:
+        return {
+            "status": "invalid_manifest",
+            "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+            "reason": "missing artifact_dir or generated_at",
+        }
+
+    try:
+        manifest_generated_at = datetime.fromisoformat(str(generated_at))
+    except ValueError:
+        return {
+            "status": "invalid_manifest",
+            "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+            "reason": "generated_at is not ISO datetime",
+        }
+    if manifest_generated_at.tzinfo is None:
+        manifest_generated_at = manifest_generated_at.replace(tzinfo=timezone.utc)
+
+    if manifest_generated_at < suite_started_at:
+        return {
+            "status": "stale_manifest",
+            "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+            "generated_at": manifest_generated_at.isoformat(),
+            "suite_started_at": suite_started_at.isoformat(),
+        }
+
+    artifact_path = Path(str(artifact_dir))
+    acceptance_summary_path = artifact_path / "acceptance_summary.json"
+    sequence_batch_report_path = artifact_path / "sequence_batch_report.json"
+    if not acceptance_summary_path.exists() or not sequence_batch_report_path.exists():
+        return {
+            "status": "invalid_manifest",
+            "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+            "artifact_dir": artifact_path.as_posix(),
+            "reason": "required sequence artifact files not found",
+        }
+
+    return {
+        "status": "bound",
+        "manifest_path": CURRENT_SEQUENCE_ARTIFACT_MANIFEST.as_posix(),
+        "artifact_dir": artifact_path.as_posix(),
+        "acceptance_summary_path": acceptance_summary_path.as_posix(),
+        "sequence_batch_report_path": sequence_batch_report_path.as_posix(),
+        "workflow_run_id": payload.get("workflow_run_id"),
+        "generated_at": manifest_generated_at.isoformat(),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run stage acceptance suites.")
     parser.add_argument("--suite", choices=["core", "real-smoke", "real-acceptance", "all"], default="core")
     parser.add_argument("--summary-file", default="", help="Optional JSON summary output path.")
     args = parser.parse_args()
 
+    suite_started_at = datetime.now(timezone.utc)
     execution_plan = build_execution_plan(args.suite)
     suite_results = [_run_single_suite(name, modules) for name, modules in execution_plan]
 
@@ -313,7 +380,12 @@ def main() -> int:
     print(f"[stage-acceptance] summary_file={summary_path}")
 
     if any(item[0] in {"real-smoke", "real-acceptance"} for item in execution_plan):
-        artifact_dir = _write_real_provider_artifacts(suite_arg=args.suite, summary_path=summary_path, suite_results=suite_results)
+        artifact_dir = _write_real_provider_artifacts(
+            suite_arg=args.suite,
+            summary_path=summary_path,
+            suite_results=suite_results,
+            suite_started_at=suite_started_at,
+        )
         print(f"[stage-acceptance] real_provider_artifact_dir={artifact_dir}")
 
     return 0 if all(item["exit_code"] == 0 for item in suite_results) else 1

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+CURRENT_SEQUENCE_ARTIFACT_MANIFEST = "current_real_provider_sequence_artifact.json"
+
 
 def _extract_chapter_text(chapter_item: dict[str, Any]) -> str:
     payload = chapter_item.get("chapter_result") if isinstance(chapter_item.get("chapter_result"), dict) else {}
@@ -127,9 +129,20 @@ def export_real_provider_sequence_artifacts(
     acceptance_summary_path = artifact_dir / "acceptance_summary.json"
     acceptance_summary_path.write_text(json.dumps(acceptance_summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    binding_manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "artifact_dir": artifact_dir.as_posix(),
+        "acceptance_summary_path": acceptance_summary_path.as_posix(),
+        "sequence_batch_report_path": batch_report_path.as_posix(),
+        "workflow_run_id": workflow_run_id,
+    }
+    binding_manifest_path = output_root / CURRENT_SEQUENCE_ARTIFACT_MANIFEST
+    binding_manifest_path.write_text(json.dumps(binding_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
     return {
         "artifact_dir": artifact_dir.as_posix(),
         "acceptance_summary_path": acceptance_summary_path.as_posix(),
         "sequence_batch_report_path": batch_report_path.as_posix(),
+        "binding_manifest_path": binding_manifest_path.as_posix(),
         "chapter_artifact_status": chapter_artifact_status,
     }
