@@ -5,12 +5,14 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.db.models import PublishedChapterORM
+from app.db.models import ChapterBlueprintORM, ChapterDraftORM, ChapterGoalORM, PublishedChapterORM
 from app.db.session import SessionLocal
 from app.domain.enums import GateName
 from app.main import create_app
 from app.schemas.gate import GateReviewResult
 from app.services.gate_service import gate_service
+from app.services.chapter_summary_service import chapter_summary_service
+from app.services.workflow_service import workflow_service
 
 
 def _gate_result(project_id: str, draft_id: str, gate_name: GateName, *, passed: bool, severity: str, category: str, message: str) -> GateReviewResult:
@@ -93,6 +95,7 @@ class WorkflowSequenceCycleClosureTest(unittest.TestCase):
             "testing_auto_select_first_blueprint": True,
             "auto_propose_changeset": True,
             "auto_approve_changeset": True,
+            "approved_by": "tester",
             "auto_apply_changeset": True,
             "approved_by": "tester",
         }
@@ -199,6 +202,210 @@ class WorkflowSequenceCycleClosureTest(unittest.TestCase):
         self.assertTrue(chapter_report["quality_delta_decision"])
         self.assertTrue(chapter_report["delta_baseline_source"])
         self.assertIn("quality_delta_non_pass_count", report["summary"])
+
+    def _execute_sequence_with_gate_fail_once_on_ch2(self, project_id: str, **overrides):
+        failed_once = {"ch2": False}
+
+        original_evaluate = gate_service._evaluate_gate
+
+        def evaluate_fail_once_on_ch2(db, gate_name, draft, blueprint, latest_snapshot, genre_context, run_id, trace_id):
+            result = original_evaluate(
+                db=db,
+                gate_name=gate_name,
+                draft=draft,
+                blueprint=blueprint,
+                latest_snapshot=latest_snapshot,
+                genre_context=genre_context,
+                run_id=run_id,
+                trace_id=trace_id,
+            )
+            chapter_no = 0
+            if draft is not None:
+                blueprint = db.get(ChapterBlueprintORM, draft.blueprint_id)
+                if blueprint is not None:
+                    goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+                    chapter_no = goal.chapter_no if goal is not None else 0
+            if gate_name == GateName.NARRATIVE.value and chapter_no == 2 and not failed_once["ch2"]:
+                failed_once["ch2"] = True
+                return _gate_result(
+                    project_id,
+                    draft.id,
+                    GateName.NARRATIVE,
+                    passed=False,
+                    severity="S1",
+                    category="narrative_alignment",
+                    message="第二章首次执行触发人工处理",
+                )
+            return result
+
+        payload = {
+            "project_id": project_id,
+            "start_chapter_no": 1,
+            "chapter_count": 3,
+            "current_volume_goal": "连续三章推进主线并保留恢复能力",
+            "testing_auto_select_first_blueprint": True,
+            "auto_propose_changeset": True,
+            "auto_approve_changeset": True,
+            "approved_by": "tester",
+            "auto_apply_changeset": True,
+            "auto_publish": True,
+            "published_by": "tester",
+            "review_gate_names": ["schema_gate", "canon_gate", "narrative_gate"],
+        }
+        payload.update(overrides)
+        with patch.object(gate_service, "_evaluate_gate", side_effect=evaluate_fail_once_on_ch2):
+            first = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=payload)
+            self.assertEqual(first.status_code, 200)
+            return payload, first.json()["data"]
+
+    def test_sequence_should_resume_from_stopped_chapter_without_rerunning_completed_chapters(self):
+        project_id = self._create_project_and_snapshot()
+        payload, first = self._execute_sequence_with_gate_fail_once_on_ch2(project_id)
+        self.assertEqual(first["stage_status"], "attention_required")
+        self.assertEqual(first["stopped_at_chapter_no"], 2)
+        run_id = first["run"]["id"]
+
+        continue_resp = self.client.post(
+            "/api/v1/workflows/runs/manual-continue",
+            json={"workflow_run_id": run_id, "continued_by": "tester", "reason": "已人工处理第二章"},
+        )
+        self.assertEqual(continue_resp.status_code, 200)
+
+        dispatched_chapters: list[int] = []
+        original_execute = workflow_service.execute_chapter_cycle
+
+        def capture_execute(db, request):
+            chapter_no = request.chapter_no
+            if chapter_no is None and request.chapter_goal_id:
+                goal = db.get(ChapterGoalORM, request.chapter_goal_id)
+                chapter_no = goal.chapter_no if goal else None
+            if chapter_no is not None:
+                dispatched_chapters.append(chapter_no)
+            return original_execute(db=db, request=request)
+
+        with patch.object(workflow_service, "execute_chapter_cycle", side_effect=capture_execute):
+            resume_payload = dict(payload)
+            resume_payload["workflow_run_id"] = run_id
+            resumed = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=resume_payload)
+        self.assertEqual(resumed.status_code, 200)
+        resumed_data = resumed.json()["data"]
+        self.assertEqual(resumed_data["run"]["id"], run_id)
+        self.assertNotIn(1, dispatched_chapters)
+        self.assertIn(2, dispatched_chapters)
+        self.assertEqual(resumed_data["stage_status"], "completed")
+
+    def test_sequence_should_skip_completed_chapters_recorded_in_chapter_results(self):
+        project_id = self._create_project_and_snapshot()
+        payload, first = self._execute_sequence_with_gate_fail_once_on_ch2(project_id)
+        run_id = first["run"]["id"]
+
+        continue_resp = self.client.post(
+            "/api/v1/workflows/runs/manual-continue",
+            json={"workflow_run_id": run_id, "continued_by": "tester", "reason": "继续序列"},
+        )
+        self.assertEqual(continue_resp.status_code, 200)
+
+        chapter_calls: list[int] = []
+        original_execute = workflow_service.execute_chapter_cycle
+
+        def record_calls(db, request):
+            if request.chapter_no is not None:
+                chapter_calls.append(request.chapter_no)
+            return original_execute(db=db, request=request)
+
+        with patch.object(workflow_service, "execute_chapter_cycle", side_effect=record_calls):
+            resume_payload = dict(payload)
+            resume_payload["workflow_run_id"] = run_id
+            resume_resp = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=resume_payload)
+        self.assertEqual(resume_resp.status_code, 200)
+        self.assertTrue(all(ch != 1 for ch in chapter_calls))
+
+    def test_sequence_batch_report_should_remain_clean_after_resume(self):
+        project_id = self._create_project_and_snapshot()
+        payload, first = self._execute_sequence_with_gate_fail_once_on_ch2(project_id)
+        run_id = first["run"]["id"]
+
+        continue_resp = self.client.post(
+            "/api/v1/workflows/runs/manual-continue",
+            json={"workflow_run_id": run_id, "continued_by": "tester", "reason": "继续完成序列"},
+        )
+        self.assertEqual(continue_resp.status_code, 200)
+
+        resume_payload = dict(payload)
+        resume_payload["workflow_run_id"] = run_id
+        resume_resp = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=resume_payload)
+        self.assertEqual(resume_resp.status_code, 200)
+
+        report_resp = self.client.get(f"/api/v1/workflows/chapter-sequence/reports/{run_id}")
+        self.assertEqual(report_resp.status_code, 200)
+        report = report_resp.json()["data"]
+        chapter_nos = [item["chapter_no"] for item in report["chapter_reports"]]
+        self.assertEqual(len(chapter_nos), len(set(chapter_nos)))
+        self.assertEqual(report["summary"]["processed_chapter_count"], 3)
+        self.assertEqual(report["summary"]["completed_chapter_count"], 3)
+        self.assertEqual(report["summary"]["attention_chapter_count"], 0)
+        self.assertEqual(report["summary"]["failed_chapter_count"], 0)
+
+    def test_sequence_resume_response_should_return_full_accumulated_chapter_results(self):
+        project_id = self._create_project_and_snapshot()
+        payload, first = self._execute_sequence_with_gate_fail_once_on_ch2(project_id)
+        run_id = first["run"]["id"]
+
+        continue_resp = self.client.post(
+            "/api/v1/workflows/runs/manual-continue",
+            json={"workflow_run_id": run_id, "continued_by": "tester", "reason": "继续完成剩余章节"},
+        )
+        self.assertEqual(continue_resp.status_code, 200)
+
+        resume_payload = dict(payload)
+        resume_payload["workflow_run_id"] = run_id
+        resumed = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=resume_payload)
+        self.assertEqual(resumed.status_code, 200)
+        data = resumed.json()["data"]
+        chapter_nos = [item["chapter_no"] for item in data["chapter_results"]]
+
+        self.assertEqual(chapter_nos, [1, 2, 3])
+        self.assertEqual(data["processed_chapter_count"], len(data["chapter_results"]))
+        self.assertEqual(set(chapter_nos), set(range(1, data["processed_chapter_count"] + 1)))
+
+    def test_sequence_resume_should_restore_unresolved_open_loops_from_latest_completed_chapter(self):
+        project_id = self._create_project_and_snapshot()
+        target_loops = ["loop:hero-secret", "loop:new-threat"]
+        original_generate_summary = chapter_summary_service.generate_for_published
+
+        def patch_summary_for_ch1(db, request, *, commit=True):
+            summary = original_generate_summary(db=db, request=request, commit=commit)
+            if summary.chapter_no == 1:
+                summary.unresolved_open_loops = list(target_loops)
+            return summary
+
+        with patch.object(chapter_summary_service, "generate_for_published", side_effect=patch_summary_for_ch1):
+            payload, first = self._execute_sequence_with_gate_fail_once_on_ch2(project_id)
+        run_id = first["run"]["id"]
+
+        continue_resp = self.client.post(
+            "/api/v1/workflows/runs/manual-continue",
+            json={"workflow_run_id": run_id, "continued_by": "tester", "reason": "恢复并继续第2章"},
+        )
+        self.assertEqual(continue_resp.status_code, 200)
+
+        captured_loops: list[list[str]] = []
+        original_execute_cycle = workflow_service.execute_chapter_cycle
+
+        def capture_cycle_request(db, request):
+            if request.chapter_no == 2:
+                captured_loops.append(list(request.unresolved_open_loops))
+            return original_execute_cycle(db=db, request=request)
+
+        with patch.object(workflow_service, "execute_chapter_cycle", side_effect=capture_cycle_request):
+            resume_payload = dict(payload)
+            resume_payload["workflow_run_id"] = run_id
+            resume_payload["unresolved_open_loops"] = ["from_request_should_not_win"]
+            resume_resp = self.client.post("/api/v1/workflows/chapter-sequence/execute", json=resume_payload)
+
+        self.assertEqual(resume_resp.status_code, 200)
+        self.assertTrue(captured_loops)
+        self.assertEqual(captured_loops[0], target_loops)
 
 
 if __name__ == "__main__":

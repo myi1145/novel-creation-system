@@ -284,9 +284,60 @@ class WorkflowService:
             chapter_result=result,
         )
 
+    def _build_sequence_result_items_from_metadata(self, db: Session, sequence_run: WorkflowRunORM) -> list[ChapterSequenceItemResult]:
+        metadata = dict(sequence_run.run_metadata or {})
+        summaries = self._normalize_sequence_result_summaries(list(metadata.get("chapter_results") or []))
+        child_run_ids = [item.get("workflow_run_id") for item in summaries if item.get("workflow_run_id")]
+        child_runs: dict[str, WorkflowRunORM] = {}
+        if child_run_ids:
+            child_runs = {
+                row.id: row
+                for row in db.query(WorkflowRunORM).filter(WorkflowRunORM.id.in_(child_run_ids)).all()
+            }
+
+        result_items: list[ChapterSequenceItemResult] = []
+        for item in summaries:
+            child_run_id = item.get("workflow_run_id")
+            child_run = child_runs.get(child_run_id or "")
+            if child_run is None:
+                continue
+            stage_status = item.get("stage_status") or child_run.status or "running"
+            cycle_result = ExecuteChapterCycleResult(
+                run=WorkflowRun.model_validate(child_run),
+                stage_status=stage_status,
+                next_action=item.get("next_action"),
+            )
+            result_items.append(
+                ChapterSequenceItemResult(
+                    chapter_no=item.get("chapter_no") or (child_run.chapter_no or 0),
+                    workflow_run_id=child_run.id,
+                    trace_id=item.get("trace_id") or child_run.trace_id,
+                    stage_status=stage_status,
+                    status=stage_status,
+                    next_action=item.get("next_action"),
+                    chapter_goal_id=item.get("chapter_goal_id"),
+                    selected_blueprint_id=item.get("selected_blueprint_id"),
+                    draft_id=item.get("draft_id"),
+                    changeset_id=item.get("changeset_id"),
+                    result_snapshot_id=item.get("result_snapshot_id"),
+                    published_chapter_id=item.get("published_chapter_id"),
+                    latest_summary=item.get("latest_summary"),
+                    latest_next_chapter_seed=item.get("latest_next_chapter_seed"),
+                    derived_update_status=item.get("derived_update_status"),
+                    chapter_result=cycle_result,
+                )
+            )
+        return sorted(result_items, key=lambda value: value.chapter_no)
+
     def _append_sequence_result(self, db: Session, run: WorkflowRunORM, item: ChapterSequenceItemResult) -> None:
         metadata = dict(run.run_metadata or {})
         results = list(metadata.get("chapter_results") or [])
+        latest_unresolved_open_loops: list[str] = []
+        published_summary = item.chapter_summary
+        if published_summary is None and item.chapter_result.publish_result is not None:
+            published_summary = item.chapter_result.publish_result.chapter_summary
+        if published_summary is not None:
+            latest_unresolved_open_loops = list(published_summary.unresolved_open_loops)
         summary = {
             "chapter_no": item.chapter_no,
             "workflow_run_id": item.workflow_run_id,
@@ -304,6 +355,7 @@ class WorkflowService:
             "latest_summary": item.latest_summary,
             "latest_next_chapter_seed": item.latest_next_chapter_seed,
             "derived_update_status": item.derived_update_status,
+            "latest_unresolved_open_loops": latest_unresolved_open_loops,
         }
         replaced = False
         for idx, existing in enumerate(results):
@@ -321,6 +373,40 @@ class WorkflowService:
         metadata["failed_chapter_count"] = sum(1 for value in results if value.get("stage_status") == "failed")
         run.run_metadata = metadata
         db.flush()
+
+    def _normalize_sequence_result_summaries(self, summaries: list[dict] | None) -> list[dict]:
+        deduped: dict[int, dict] = {}
+        for entry in list(summaries or []):
+            chapter_no = entry.get("chapter_no")
+            if not isinstance(chapter_no, int):
+                continue
+            deduped[chapter_no] = entry
+        return sorted(deduped.values(), key=lambda item: item.get("chapter_no") or 0)
+
+    def _resolve_sequence_resume_plan(self, request: ExecuteChapterSequenceRequest, sequence_run: WorkflowRunORM) -> dict:
+        metadata = dict(sequence_run.run_metadata or {})
+        chapter_results = self._normalize_sequence_result_summaries(list(metadata.get("chapter_results") or []))
+        requested_chapters = [request.start_chapter_no + offset for offset in range(request.chapter_count)]
+        completed_chapters = {
+            item.get("chapter_no")
+            for item in chapter_results
+            if isinstance(item.get("chapter_no"), int) and item.get("stage_status") == "completed"
+        }
+        stopped_chapter_no = metadata.get("stopped_chapter_no")
+        resume_from_chapter_no = request.start_chapter_no
+        if request.workflow_run_id and isinstance(stopped_chapter_no, int):
+            resume_from_chapter_no = stopped_chapter_no
+        chapters_to_dispatch = [
+            chapter_no
+            for chapter_no in requested_chapters
+            if chapter_no >= resume_from_chapter_no and chapter_no not in completed_chapters
+        ]
+        return {
+            "resume_from_chapter_no": resume_from_chapter_no,
+            "already_completed_chapter_nos": sorted(completed_chapters),
+            "chapters_to_dispatch": chapters_to_dispatch,
+            "chapter_results": chapter_results,
+        }
 
     def _build_sequence_batch_report(self, db: Session, sequence_run: WorkflowRunORM) -> ChapterSequenceBatchReport:
         if sequence_run.source_type != "chapter_sequence":
@@ -1797,6 +1883,20 @@ class WorkflowService:
                 "current_chapter_no": request.start_chapter_no,
             },
         )
+        resume_plan = self._resolve_sequence_resume_plan(request=request, sequence_run=sequence_run)
+        chapters_to_dispatch = list(resume_plan["chapters_to_dispatch"])
+        completed_chapters = set(resume_plan["already_completed_chapter_nos"])
+        chapter_results_meta = list(resume_plan["chapter_results"])
+        resume_from_chapter_no = resume_plan["resume_from_chapter_no"]
+        if chapters_to_dispatch:
+            workflow_run_service.update_progress(
+                db=db,
+                run=sequence_run,
+                extra_metadata={
+                    "current_chapter_no": chapters_to_dispatch[0],
+                    "sequence_resume_from_chapter_no": resume_from_chapter_no,
+                },
+            )
         self._log_sequence_event(
             db=db,
             run=sequence_run,
@@ -1805,6 +1905,9 @@ class WorkflowService:
                 "start_chapter_no": request.start_chapter_no,
                 "chapter_count": request.chapter_count,
                 "testing_auto_select_first_blueprint": request.testing_auto_select_first_blueprint,
+                "resume_from_chapter_no": resume_from_chapter_no,
+                "already_completed_chapter_nos": sorted(completed_chapters),
+                "chapters_to_dispatch": chapters_to_dispatch,
             },
         )
         db.commit()
@@ -1816,9 +1919,23 @@ class WorkflowService:
         final_status = "completed"
         stable_previous_chapter_summary = request.previous_chapter_summary
         stable_unresolved_open_loops = list(request.unresolved_open_loops)
+        if chapter_results_meta:
+            latest_completed_before_resume = [
+                item
+                for item in chapter_results_meta
+                if item.get("stage_status") == "completed"
+                and isinstance(item.get("chapter_no"), int)
+                and item.get("chapter_no") < resume_from_chapter_no
+            ]
+            if latest_completed_before_resume:
+                latest_completed_summary = latest_completed_before_resume[-1].get("latest_summary")
+                if latest_completed_summary:
+                    stable_previous_chapter_summary = latest_completed_summary
+                latest_unresolved_open_loops = latest_completed_before_resume[-1].get("latest_unresolved_open_loops")
+                if isinstance(latest_unresolved_open_loops, list):
+                    stable_unresolved_open_loops = list(latest_unresolved_open_loops)
 
-        for offset in range(request.chapter_count):
-            chapter_no = request.start_chapter_no + offset
+        for chapter_no in chapters_to_dispatch:
             sequence_run = db.get(WorkflowRunORM, sequence_run.id) or sequence_run
             workflow_run_service.update_progress(
                 db=db,
@@ -1909,6 +2026,8 @@ class WorkflowService:
 
             item = self._build_sequence_item(cycle_result)
             chapter_results.append(item)
+            if item.stage_status == "completed":
+                completed_chapters.add(item.chapter_no)
             if item.stage_status == "completed" and cycle_result.publish_result is not None:
                 published_summary = cycle_result.chapter_summary or cycle_result.publish_result.chapter_summary
                 if published_summary is not None:
@@ -1994,7 +2113,12 @@ class WorkflowService:
                 complete=True,
                 extra_metadata={
                     "sequence_completed_at": datetime.now(timezone.utc).isoformat(),
-                    "last_completed_chapter_no": request.start_chapter_no + request.chapter_count - 1,
+                    "last_completed_chapter_no": max(completed_chapters) if completed_chapters else None,
+                    "stopped_chapter_no": None,
+                    "stop_reason": None,
+                    "attention_reason": None,
+                    "failure_reason": None,
+                    "next_action": None,
                 },
             )
             self._log_sequence_event(
@@ -2009,16 +2133,24 @@ class WorkflowService:
             db.commit()
 
         final_run = db.get(WorkflowRunORM, sequence_run.id) or sequence_run
+        final_metadata = dict(final_run.run_metadata or {})
+        final_chapter_results_meta = self._normalize_sequence_result_summaries(list(final_metadata.get("chapter_results") or []))
+        processed_chapter_count = int(final_metadata.get("processed_chapter_count") or len(final_chapter_results_meta))
+        completed_chapter_count = int(final_metadata.get("completed_chapter_count") or sum(1 for item in final_chapter_results_meta if item.get("stage_status") == "completed"))
+        failed_chapter_count = int(final_metadata.get("failed_chapter_count") or sum(1 for item in final_chapter_results_meta if item.get("stage_status") == "failed"))
+        attention_chapter_count = int(final_metadata.get("attention_chapter_count") or sum(1 for item in final_chapter_results_meta if item.get("stage_status") == "attention_required"))
+        full_chapter_results = self._build_sequence_result_items_from_metadata(db=db, sequence_run=final_run)
+        response_chapter_results = full_chapter_results if request.workflow_run_id else chapter_results
         result = ExecuteChapterSequenceResult(
             run=WorkflowRun.model_validate(final_run),
             stage_status=final_status,
             batch_status=final_status,
             next_action=next_action,
             stop_reason=stop_reason,
-            processed_chapter_count=len(chapter_results),
-            completed_chapter_count=sum(1 for item in chapter_results if item.stage_status == "completed"),
-            failed_chapter_count=sum(1 for item in chapter_results if item.stage_status == "failed"),
-            attention_chapter_count=sum(1 for item in chapter_results if item.stage_status == "attention_required"),
+            processed_chapter_count=processed_chapter_count,
+            completed_chapter_count=completed_chapter_count,
+            failed_chapter_count=failed_chapter_count,
+            attention_chapter_count=attention_chapter_count,
             revised_chapter_count=sum(
                 1
                 for item in chapter_results
@@ -2029,11 +2161,11 @@ class WorkflowService:
             summary_message=(
                 f"序列执行在第 {stopped_at_chapter_no} 章停止，等待动作：{next_action or '人工处理'}"
                 if stop_reason is not None and stopped_at_chapter_no is not None
-                else f"序列执行完成，共处理 {len(chapter_results)} 章"
+                else f"序列执行完成，共处理 {processed_chapter_count} 章"
             ),
-            chapter_results=chapter_results,
+            chapter_results=response_chapter_results,
         ).model_dump(mode="json")
-        scope.success("连续章节工作流执行完成", workflow_run_id=final_run.id, chapter_no=request.start_chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=final_run.current_step, summary=f"processed={len(chapter_results)}")
+        scope.success("连续章节工作流执行完成", workflow_run_id=final_run.id, chapter_no=request.start_chapter_no, stop_reason=stop_reason, next_action=next_action, current_step=final_run.current_step, summary=f"processed={processed_chapter_count}")
         return result
 
 
