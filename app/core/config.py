@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     port: int = 8000
     api_prefix: str = "/api/v1"
     database_url: str = f"sqlite:///{DEFAULT_SQLITE_PATH.as_posix()}"
-    auto_create_tables: bool = True
+    auto_create_tables: bool = False
 
     agent_provider: str = "mock"
     agent_model: str = "mock-creative-writer-v1"
