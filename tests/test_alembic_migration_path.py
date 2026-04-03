@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,16 +34,10 @@ class AlembicMigrationPathTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "migration_smoke.db"
             db_url = f"sqlite:///{db_path.as_posix()}"
-            alembic_ini = (REPO_ROOT / "alembic.ini").as_posix()
-            cmd = [
-                sys.executable,
-                "-c",
-                (
-                    "from alembic.config import main; "
-                    f"main(argv=['-c', r'{alembic_ini}', 'upgrade', 'head'])"
-                ),
-            ]
-            result = self._run(cmd, {"DATABASE_URL": db_url}, cwd=Path(tmpdir))
+            result = self._run(
+                ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
+                {"DATABASE_URL": db_url},
+            )
 
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertTrue(db_path.exists())
