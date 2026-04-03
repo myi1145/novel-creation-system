@@ -52,6 +52,21 @@ jobs:
             printf '%s\n' "${artifact_dirs[@]}"
           fi
 
+      - name: 校验 real-smoke manifest 完整性（硬校验）
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifact_dirs=(output/real-smoke_artifacts_*)
+          if [ ${#artifact_dirs[@]} -eq 0 ]; then
+            echo "未找到 real-smoke artifact 目录，无法执行 manifest 校验。"
+            exit 1
+          fi
+          for dir in "${artifact_dirs[@]}"; do
+            echo "校验 artifact 目录: ${dir}"
+            python tests/validate_real_smoke_artifacts.py --artifact-dir "${dir}"
+          done
+
       - name: 上传 real-smoke summary
         if: always()
         uses: actions/upload-artifact@v4

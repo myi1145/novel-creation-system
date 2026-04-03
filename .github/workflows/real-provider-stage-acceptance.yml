@@ -76,6 +76,29 @@ jobs:
           path: output/**
           if-no-files-found: warn
 
+      - name: 校验 manifest 完整性（real-smoke / all）
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          if [ "${{ inputs.suite }}" = "real-acceptance" ]; then
+            echo "suite=real-acceptance：当前不强制套用 real-smoke manifest 结构，跳过校验。"
+            exit 0
+          fi
+          if [ "${{ inputs.suite }}" = "real-smoke" ]; then
+            artifact_dirs=(output/real-smoke_artifacts_*)
+          else
+            artifact_dirs=(output/all_artifacts_*)
+          fi
+          if [ ${#artifact_dirs[@]} -eq 0 ]; then
+            echo "未找到可校验 artifact 目录，suite=${{ inputs.suite }}"
+            exit 1
+          fi
+          for dir in "${artifact_dirs[@]}"; do
+            echo "校验 artifact 目录: ${dir}"
+            python tests/validate_real_smoke_artifacts.py --artifact-dir "${dir}"
+          done
+
       - name: 上传 real provider 可归档工件目录
         if: always()
         uses: actions/upload-artifact@v4
