@@ -16,6 +16,95 @@ def _new_trace_id() -> str:
 
 
 class WorkflowRunService:
+    _ACTIVE_RUN_STATUSES = {"running", "paused", "manual_review", "attention_required"}
+
+    def _build_run_intent_key(
+        self,
+        *,
+        workflow_name: str,
+        project_id: str,
+        chapter_no: int | None,
+        source_type: str | None,
+        source_ref: str | None,
+        idempotency_key: str | None,
+    ) -> str:
+        base_key = "|".join(
+            [
+                workflow_name or "",
+                project_id or "",
+                str(chapter_no) if chapter_no is not None else "",
+                source_type or "",
+                source_ref or "",
+            ]
+        )
+        if idempotency_key:
+            return f"{base_key}|{idempotency_key}"
+        return base_key
+
+    def _is_same_execution_intent(
+        self,
+        *,
+        active_run: WorkflowRunORM,
+        workflow_name: str,
+        chapter_no: int | None,
+        source_type: str | None,
+        source_ref: str | None,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> bool:
+        if trace_id and active_run.trace_id == trace_id:
+            return True
+        active_metadata = dict(active_run.run_metadata or {})
+        active_idempotency_key = active_metadata.get("idempotency_key")
+        if idempotency_key or active_idempotency_key:
+            return bool(idempotency_key and active_idempotency_key and idempotency_key == active_idempotency_key)
+        return (
+            active_run.workflow_name == workflow_name
+            and active_run.chapter_no == chapter_no
+            and (active_run.source_type or None) == (source_type or None)
+            and (active_run.source_ref or None) == (source_ref or None)
+        )
+
+    def _find_active_run_for_intent(
+        self,
+        db: Session,
+        *,
+        project_id: str,
+        workflow_name: str,
+        chapter_no: int | None,
+        source_type: str | None,
+        source_ref: str | None,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> tuple[WorkflowRunORM | None, WorkflowRunORM | None]:
+        query = (
+            db.query(WorkflowRunORM)
+            .filter(
+                WorkflowRunORM.project_id == project_id,
+                WorkflowRunORM.workflow_name == workflow_name,
+                WorkflowRunORM.status.in_(self._ACTIVE_RUN_STATUSES),
+                WorkflowRunORM.chapter_no.is_(None) if chapter_no is None else WorkflowRunORM.chapter_no == chapter_no,
+            )
+            .order_by(WorkflowRunORM.created_at.desc())
+        )
+        same_intent: WorkflowRunORM | None = None
+        conflicting: WorkflowRunORM | None = None
+        for active_run in query.all():
+            if self._is_same_execution_intent(
+                active_run=active_run,
+                workflow_name=workflow_name,
+                chapter_no=chapter_no,
+                source_type=source_type,
+                source_ref=source_ref,
+                trace_id=trace_id,
+                idempotency_key=idempotency_key,
+            ):
+                same_intent = active_run
+                break
+            if conflicting is None:
+                conflicting = active_run
+        return same_intent, conflicting
+
     def _get_run_or_raise(self, db: Session, workflow_run_id: str) -> WorkflowRunORM:
         run = db.get(WorkflowRunORM, workflow_run_id)
         if run is None:
@@ -85,6 +174,42 @@ class WorkflowRunService:
                 run.run_metadata = {**(run.run_metadata or {}), **run_metadata}
             db.flush()
             return run
+        metadata = dict(run_metadata or {})
+        idempotency_key = metadata.get("idempotency_key")
+        run_intent_key = self._build_run_intent_key(
+            workflow_name=workflow_name,
+            project_id=project_id,
+            chapter_no=chapter_no,
+            source_type=source_type,
+            source_ref=source_ref,
+            idempotency_key=idempotency_key,
+        )
+        same_intent_run, conflicting_run = self._find_active_run_for_intent(
+            db=db,
+            project_id=project_id,
+            workflow_name=workflow_name,
+            chapter_no=chapter_no,
+            source_type=source_type,
+            source_ref=source_ref,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
+        )
+        if same_intent_run is not None:
+            active_metadata = dict(same_intent_run.run_metadata or {})
+            if active_metadata.get("run_intent_key") != run_intent_key:
+                active_metadata["run_intent_key"] = run_intent_key
+                if idempotency_key and not active_metadata.get("idempotency_key"):
+                    active_metadata["idempotency_key"] = idempotency_key
+                same_intent_run.run_metadata = active_metadata
+                db.flush()
+            return same_intent_run
+        if conflicting_run is not None:
+            conflict_error = ConflictError(
+                f"当前项目第 {chapter_no} 章已有活跃工作流运行，请先继续 existing_workflow_run_id={conflicting_run.id}"
+            )
+            conflict_error.details = {"existing_workflow_run_id": conflicting_run.id}
+            raise conflict_error
+        metadata["run_intent_key"] = run_intent_key
         run = WorkflowRunORM(
             project_id=project_id,
             workflow_name=workflow_name,
@@ -94,7 +219,7 @@ class WorkflowRunService:
             source_ref=source_ref,
             status="running",
             current_step=current_step,
-            run_metadata=run_metadata or {},
+            run_metadata=metadata,
         )
         db.add(run)
         db.flush()
