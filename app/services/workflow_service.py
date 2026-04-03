@@ -131,6 +131,26 @@ class WorkflowService:
             return f"sequence:{sequence_run.id}:{chapter_no}", sequence_run.id
         return f"manual:{request.project_id}:{chapter_no}", None
 
+    def _resolve_cycle_entry_run_context(self, db: Session, request: ExecuteChapterCycleRequest) -> tuple[str | None, str | None]:
+        if request.workflow_run_id:
+            run = db.get(WorkflowRunORM, request.workflow_run_id)
+            if run is None or run.project_id != request.project_id:
+                return request.workflow_run_id, request.trace_id
+            return run.id, request.trace_id or run.trace_id
+        if request.chapter_goal_id:
+            goal = db.get(ChapterGoalORM, request.chapter_goal_id)
+            if goal is not None and goal.project_id == request.project_id and goal.workflow_run_id:
+                linked_run = db.get(WorkflowRunORM, goal.workflow_run_id)
+                if linked_run is not None and linked_run.project_id == request.project_id:
+                    return linked_run.id, request.trace_id or goal.trace_id or linked_run.trace_id
+        if request.selected_blueprint_id:
+            blueprint = db.get(ChapterBlueprintORM, request.selected_blueprint_id)
+            if blueprint is not None and blueprint.project_id == request.project_id and blueprint.workflow_run_id:
+                linked_run = db.get(WorkflowRunORM, blueprint.workflow_run_id)
+                if linked_run is not None and linked_run.project_id == request.project_id:
+                    return linked_run.id, request.trace_id or blueprint.trace_id or linked_run.trace_id
+        return None, request.trace_id
+
     def _build_recent_issues(self, db: Session, project_id: str | None = None, workflow_run_id: str | None = None, limit: int = 20) -> list[dict]:
         issues: list[dict] = []
 
@@ -1038,18 +1058,21 @@ class WorkflowService:
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
-        existing_run = db.get(WorkflowRunORM, request.workflow_run_id) if request.workflow_run_id else None
+        explicit_workflow_run_id = bool(request.workflow_run_id)
+        requested_run_id, requested_trace_id = self._resolve_cycle_entry_run_context(db=db, request=request)
+        existing_run = db.get(WorkflowRunORM, requested_run_id) if requested_run_id else None
         resolved_chapter_no = self._resolve_cycle_chapter_no(db=db, request=request)
-        idempotency_key, sequence_run_id = self._build_cycle_idempotency(db=db, request=request, chapter_no=resolved_chapter_no)
+        normalized_request = request.model_copy(update={"workflow_run_id": requested_run_id, "trace_id": requested_trace_id})
+        idempotency_key, sequence_run_id = self._build_cycle_idempotency(db=db, request=normalized_request, chapter_no=resolved_chapter_no)
         source_ref = sequence_run_id if sequence_run_id else None
         cycle_run_metadata = {"entry": "execute_chapter_cycle"}
         if idempotency_key:
             cycle_run_metadata["idempotency_key"] = idempotency_key
         initial_run = workflow_run_service.ensure_run(
             db=db,
-            project_id=request.project_id,
-            workflow_run_id=request.workflow_run_id,
-            trace_id=request.trace_id,
+            project_id=normalized_request.project_id,
+            workflow_run_id=normalized_request.workflow_run_id,
+            trace_id=normalized_request.trace_id,
             workflow_name="chapter_cycle_workflow_v1",
             chapter_no=resolved_chapter_no,
             source_type="chapter_cycle",
@@ -1057,7 +1080,7 @@ class WorkflowService:
             current_step=(existing_run.current_step if existing_run else "chapter_cycle_started"),
             run_metadata=cycle_run_metadata,
         )
-        if request.workflow_run_id:
+        if explicit_workflow_run_id:
             if initial_run.status == "paused":
                 raise ConflictError("当前工作流已暂停，请先调用 /workflows/runs/resume 恢复后再继续执行")
             if initial_run.status == "manual_review" and (initial_run.run_metadata or {}).get("manual_review_required", True):
@@ -1069,7 +1092,7 @@ class WorkflowService:
             if initial_run.status == "completed":
                 raise ConflictError("当前工作流已完成，不能继续恢复；如需新一轮执行，请创建新的 workflow_run")
         db.commit()
-        goal = self._get_goal_for_execution(db=db, request=request, workflow_run_id_override=initial_run.id)
+        goal = self._get_goal_for_execution(db=db, request=normalized_request, workflow_run_id_override=initial_run.id)
         run_id = goal.workflow_run_id or initial_run.id
         run = db.get(WorkflowRunORM, run_id) or initial_run
         continuity_pack = None
@@ -1077,19 +1100,19 @@ class WorkflowService:
             continuity_pack = continuity_service.resolve_pack(
                 db=db,
                 request=ResolveContinuityPackRequest(
-                    project_id=request.project_id,
+                    project_id=normalized_request.project_id,
                     target_chapter_no=goal.chapter_no,
                     workflow_run_id=run.id,
                     trace_id=run.trace_id,
-                    previous_chapter_summary=request.previous_chapter_summary,
-                    unresolved_open_loops=request.unresolved_open_loops,
-                    recent_limit=request.continuity_recent_limit,
+                    previous_chapter_summary=normalized_request.previous_chapter_summary,
+                    unresolved_open_loops=normalized_request.unresolved_open_loops,
+                    recent_limit=normalized_request.continuity_recent_limit,
                 ),
                 commit=False,
             )
             run = db.get(WorkflowRunORM, run.id) or run
 
-        blueprints = chapter_service.list_blueprints(db=db, project_id=request.project_id, chapter_goal_id=goal.id)
+        blueprints = chapter_service.list_blueprints(db=db, project_id=normalized_request.project_id, chapter_goal_id=goal.id)
         if not blueprints:
             blueprints = chapter_service.generate_blueprints(
                 db=db,
