@@ -4,33 +4,40 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-import shutil
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class AlembicMigrationPathTest(unittest.TestCase):
-    def _run(self, command: list[str], extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        command: list[str],
+        extra_env: dict[str, str] | None = None,
+        *,
+        cwd: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(REPO_ROOT)
         if extra_env:
             env.update(extra_env)
         return subprocess.run(
             command,
-            cwd=REPO_ROOT,
+            cwd=cwd or REPO_ROOT,
             env=env,
             capture_output=True,
             text=True,
             check=False,
         )
 
-    @unittest.skipUnless(shutil.which("alembic"), "alembic CLI is not available in current environment")
     def test_alembic_upgrade_head_on_empty_sqlite(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "migration_smoke.db"
             db_url = f"sqlite:///{db_path.as_posix()}"
-            result = self._run(["alembic", "upgrade", "head"], {"DATABASE_URL": db_url})
+            result = self._run(
+                ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
+                {"DATABASE_URL": db_url},
+            )
 
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertTrue(db_path.exists())
