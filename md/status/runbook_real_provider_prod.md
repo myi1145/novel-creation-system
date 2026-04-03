@@ -20,6 +20,17 @@ python scripts/runbook_checks.py --env prod --env-file .env --health-url http://
 3. 健康检查（可选）
 4. 阶段验收（默认 `real-smoke`）
 
+执行完成后会自动导出证据包到：
+
+`output/runbook_evidence/<timestamp>_<env>/`
+
+至少包含：
+
+- `runbook_summary.json`：结构化结果（环境、步骤、阻断类型、exit code、建议动作、关联文档/工件）。
+- `runbook_summary.md`：人工复核摘要（一眼看结论、失败步骤、是否禁止启动、是否禁止 prod 放行、下一步动作）。
+
+若本次执行包含 stage acceptance，证据包会尝试关联最近一次 `output/stage_acceptance_summary_*.json` 路径，保证可追溯。
+
 ---
 
 ## 2. 上线前最小 checklist（人工可直接照抄）

@@ -333,6 +333,8 @@ python scripts/runbook_checks.py --env real-provider --env-file .env --stage-sui
 python scripts/runbook_checks.py --env prod --env-file .env --health-url http://127.0.0.1:8000/health --stage-suite real-acceptance
 ```
 
+运行完成后会自动输出运行期验收证据包到 `output/runbook_evidence/<timestamp>_<env>/`，至少包含 `runbook_summary.json` 与 `runbook_summary.md`，用于人工复核、放行记录与失败审计。
+
 入口阻断语义：
 
 - preflight / migration / health 失败：禁止启动或禁止继续放行；

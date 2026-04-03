@@ -224,12 +224,12 @@
 
 ### 下一步唯一目标
 
-**收口“真实 provider / prod 运行期验收与回滚演练”最小闭环。**
+**收口“运行期验收证据包”最小闭环。**
 
 一句话解释：
 
-环境分层与 preflight 已完成后，下一刀应把重点放在“上线动作可验证、失败可回退”的最小运行手册与演练入口，
-避免继续扩主链功能。
+运行手册与演练入口已具备后，下一刀应把重点放在“执行结果可归档、可下载、可人工签字复核”的证据包沉淀，
+避免结果只停留在 stdout / exit code。
 
 ---
 
@@ -237,13 +237,13 @@
 
 ### 任务名称
 
-**真实 provider / prod 运行期验收与回滚演练收口（最小版）**
+**运行期验收证据包收口（最小版）**
 
 ### 本次只做什么
 
-- 明确运行期验收 checklist（迁移、preflight、健康检查、核心验收）
-- 增加最小可执行的回滚演练入口（文档或轻量脚本）
-- 固化“失败后如何止损/回退”的最短路径
+- 为 runbook 执行结果自动导出证据包（JSON + Markdown）
+- 固化“禁止启动 / 禁止 prod 放行 / 失败步骤 / 推荐动作”的结构化表达
+- 关联 stage acceptance summary 与 runbook 文档入口，保证可追溯
 
 ### 本次不要做什么
 
@@ -336,7 +336,7 @@ README 只负责：
 
 ## 11. 当前推荐的任务下发模板
 
-可直接复制后修改：
+可直接复制后修改（已翻到当前目标：运行期验收证据包）：
 
 ```text
 任务类型：发布任务单
@@ -351,33 +351,36 @@ README 只负责：
 - real-provider 验收工件归属防串档已完成
 
 本次唯一目标：
-- 收口“真实 provider / prod 运行期验收与回滚演练”最小闭环
+- 收口“运行期验收证据包”，让 runbook 执行后自动沉淀结构化结果
 
 不要做：
 - 不改 workflow 主链逻辑
 - 不改 gate / publish / changeset 规则
 - 不改 provider gateway 核心业务逻辑
+- 不改 Alembic 迁移本体
 - 不做容器化/监控/权限系统
+- 不重写 runbook 大逻辑
 
 重点改动对象：
-- README.md
-- /md/status/current_stage_handoff.md
-- /md/status/runbook_real_provider_prod.md
-- scripts/runbook_checks.py（如需脚本入口）
+- scripts/runbook_checks.py
+- md/status/runbook_real_provider_prod.md
+- md/status/current_stage_handoff.md
+- README.md（如需最小补充入口）
+- tests/test_runtime_runbook.py（扩展）或 tests/test_runbook_evidence.py（新增）
 
 验收标准：
-- 仓库存在明确的 real-provider / prod 运行期验收与回滚说明
-- 至少存在一个最小可执行入口（脚本或明确命令序列）
-- 明确区分：禁止启动 / 禁止放行 prod / 回退到 real-provider 联调态
-- README 与 handoff 都能找到入口
-- handoff 第 11 节模板已翻到当前目标
+- scripts/runbook_checks.py 执行后会产生结构化证据包
+- 证据包至少包含 runbook_summary.json 与 runbook_summary.md
+- JSON 可明确表达通过/启动阻断/prod 放行阻断与失败步骤
+- Markdown 可让人工快速复核并定位下一步动作
+- 如执行 stage acceptance，证据包可看到关联 summary 路径或引用
 
 输出要求：
 1. 说明理解
 2. 给出最小改动方案
-3. 实现代码
+3. 实现证据包导出
 4. 补测试
-5. 更新 README / 文档
+5. 更新 README / runbook / handoff
 6. 最后列出改动文件、测试命令、结果
 
 ---
@@ -386,17 +389,15 @@ README 只负责：
 
 本轮任务已完成以下收口项：
 
-- 新增 real-provider / prod 运行期最小手册：`md/status/runbook_real_provider_prod.md`。
-- 新增统一可执行入口：`scripts/runbook_checks.py`（preflight → migration → health(可选) → stage acceptance）。
-- 明确失败分级：
-  - preflight / migration / prod 安全默认值：禁止启动；
-  - health / real-provider 验收失败：禁止放行 prod，回退 real-provider 联调态。
-- README 已新增运行期验收与回滚入口说明，并链接到 runbook。
-- 第 11 节任务模板已翻新到“运行期验收与回滚演练”目标，避免继续下发旧模板。
+- runbook 执行后自动沉淀证据包目录：`output/runbook_evidence/<timestamp>_<env>/`。
+- 证据包最小内容：`runbook_summary.json` + `runbook_summary.md`。
+- 结果语义统一：`passed / startup_blocked / prod_release_blocked`。
+- 证据包关联：runbook 文档入口 + 最近 stage acceptance summary 路径（若存在）。
 
-最小验证口径：
+最小验证口径（本轮已验证）：
 
-- 新增 `tests/test_runtime_runbook.py` 覆盖：
-  - preflight 成功路径；
-  - preflight 失败阻断路径；
-  - migration 未就绪阻断提示路径。
+- `tests/test_runtime_runbook.py` 或新增 `tests/test_runbook_evidence.py` 至少覆盖：
+  - 全部通过时生成 evidence；
+  - preflight 失败标记 `startup_blocked`；
+  - stage acceptance 失败标记 `prod_release_blocked`；
+  - JSON/MD 文件存在且字段完整。
