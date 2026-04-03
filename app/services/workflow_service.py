@@ -131,6 +131,11 @@ class WorkflowService:
             return f"sequence:{sequence_run.id}:{chapter_no}", sequence_run.id
         return f"manual:{request.project_id}:{chapter_no}", None
 
+    def _is_reusable_linked_cycle_run(self, run: WorkflowRunORM | None) -> bool:
+        if run is None:
+            return False
+        return run.status in {"running", "paused", "manual_review", "attention_required"}
+
     def _resolve_cycle_entry_run_context(self, db: Session, request: ExecuteChapterCycleRequest) -> tuple[str | None, str | None]:
         if request.workflow_run_id:
             run = db.get(WorkflowRunORM, request.workflow_run_id)
@@ -141,13 +146,21 @@ class WorkflowService:
             goal = db.get(ChapterGoalORM, request.chapter_goal_id)
             if goal is not None and goal.project_id == request.project_id and goal.workflow_run_id:
                 linked_run = db.get(WorkflowRunORM, goal.workflow_run_id)
-                if linked_run is not None and linked_run.project_id == request.project_id:
+                if (
+                    linked_run is not None
+                    and linked_run.project_id == request.project_id
+                    and self._is_reusable_linked_cycle_run(linked_run)
+                ):
                     return linked_run.id, request.trace_id or goal.trace_id or linked_run.trace_id
         if request.selected_blueprint_id:
             blueprint = db.get(ChapterBlueprintORM, request.selected_blueprint_id)
             if blueprint is not None and blueprint.project_id == request.project_id and blueprint.workflow_run_id:
                 linked_run = db.get(WorkflowRunORM, blueprint.workflow_run_id)
-                if linked_run is not None and linked_run.project_id == request.project_id:
+                if (
+                    linked_run is not None
+                    and linked_run.project_id == request.project_id
+                    and self._is_reusable_linked_cycle_run(linked_run)
+                ):
                     return linked_run.id, request.trace_id or blueprint.trace_id or linked_run.trace_id
         return None, request.trace_id
 

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from app.core.exceptions import ConflictError
 from app.core.config import settings
-from app.db.models import ProjectORM, WorkflowRunORM
+from app.db.models import ChapterBlueprintORM, ChapterGoalORM, ProjectORM, WorkflowRunORM
 from app.db.session import SessionLocal
 from app.schemas.workflow import ExecuteChapterCycleRequest
 from app.services.workflow_run_service import workflow_run_service
@@ -153,6 +153,122 @@ class WorkflowRunIntentControlTest(unittest.TestCase):
             first = workflow_service.execute_chapter_cycle(db=db, request=payload)
             second = workflow_service.execute_chapter_cycle(db=db, request=payload)
             self.assertEqual(first["run"]["id"], second["run"]["id"])
+
+    def test_resolve_cycle_entry_run_context_should_ignore_completed_goal_linked_run(self):
+        with SessionLocal() as db:
+            project = self._create_project(db)
+            run = workflow_run_service.ensure_run(
+                db=db,
+                project_id=project.id,
+                workflow_run_id=None,
+                trace_id=None,
+                workflow_name="chapter_cycle_workflow_v1",
+                chapter_no=1,
+                source_type="chapter_cycle",
+                run_metadata={"idempotency_key": f"manual:{project.id}:1"},
+            )
+            run.status = "completed"
+            db.flush()
+            goal = ChapterGoalORM(
+                project_id=project.id,
+                chapter_no=1,
+                workflow_run_id=run.id,
+                trace_id=run.trace_id,
+                current_volume_goal="推进主线",
+                structure_goal="起承转合",
+                conflict_level="medium",
+                info_reveal_level="medium",
+                required_elements=["冲突"],
+                banned_elements=[],
+            )
+            db.add(goal)
+            db.commit()
+            db.refresh(goal)
+            request = ExecuteChapterCycleRequest(project_id=project.id, chapter_goal_id=goal.id, trace_id="req-trace")
+            resolved_run_id, resolved_trace_id = workflow_service._resolve_cycle_entry_run_context(db=db, request=request)
+            self.assertIsNone(resolved_run_id)
+            self.assertEqual(resolved_trace_id, "req-trace")
+
+    def test_resolve_cycle_entry_run_context_should_ignore_failed_blueprint_linked_run(self):
+        with SessionLocal() as db:
+            project = self._create_project(db)
+            run = workflow_run_service.ensure_run(
+                db=db,
+                project_id=project.id,
+                workflow_run_id=None,
+                trace_id=None,
+                workflow_name="chapter_cycle_workflow_v1",
+                chapter_no=1,
+                source_type="chapter_cycle",
+                run_metadata={"idempotency_key": f"manual:{project.id}:1"},
+            )
+            run.status = "failed"
+            db.flush()
+            goal = ChapterGoalORM(
+                project_id=project.id,
+                chapter_no=1,
+                workflow_run_id=None,
+                trace_id=None,
+                current_volume_goal="推进主线",
+                structure_goal="起承转合",
+                conflict_level="medium",
+                info_reveal_level="medium",
+                required_elements=["冲突"],
+                banned_elements=[],
+            )
+            db.add(goal)
+            db.flush()
+            blueprint = ChapterBlueprintORM(
+                project_id=project.id,
+                chapter_goal_id=goal.id,
+                workflow_run_id=run.id,
+                trace_id=run.trace_id,
+                title_hint="蓝图",
+                summary="摘要",
+                advances=["推进"],
+                risks=["风险"],
+                selected=True,
+            )
+            db.add(blueprint)
+            db.commit()
+            db.refresh(blueprint)
+            request = ExecuteChapterCycleRequest(project_id=project.id, selected_blueprint_id=blueprint.id, trace_id="req-trace-bp")
+            resolved_run_id, resolved_trace_id = workflow_service._resolve_cycle_entry_run_context(db=db, request=request)
+            self.assertIsNone(resolved_run_id)
+            self.assertEqual(resolved_trace_id, "req-trace-bp")
+
+    def test_resolve_cycle_entry_run_context_should_reuse_paused_run(self):
+        with SessionLocal() as db:
+            project = self._create_project(db)
+            run = workflow_run_service.ensure_run(
+                db=db,
+                project_id=project.id,
+                workflow_run_id=None,
+                trace_id=None,
+                workflow_name="chapter_cycle_workflow_v1",
+                chapter_no=1,
+                source_type="chapter_cycle",
+            )
+            run.status = "paused"
+            db.flush()
+            goal = ChapterGoalORM(
+                project_id=project.id,
+                chapter_no=1,
+                workflow_run_id=run.id,
+                trace_id=run.trace_id,
+                current_volume_goal="推进主线",
+                structure_goal="起承转合",
+                conflict_level="medium",
+                info_reveal_level="medium",
+                required_elements=["冲突"],
+                banned_elements=[],
+            )
+            db.add(goal)
+            db.commit()
+            request = ExecuteChapterCycleRequest(project_id=project.id, chapter_goal_id=goal.id)
+            resolved_run_id, resolved_trace_id = workflow_service._resolve_cycle_entry_run_context(db=db, request=request)
+            self.assertEqual(resolved_run_id, run.id)
+            self.assertEqual(resolved_trace_id, run.trace_id)
 
 
 if __name__ == "__main__":
