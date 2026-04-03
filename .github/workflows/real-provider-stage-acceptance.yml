@@ -6,7 +6,7 @@ on:
       suite:
         description: 选择 real provider 验收套件
         required: true
-        default: real-smoke
+        default: real-acceptance
         type: choice
         options:
           - real-smoke
@@ -38,15 +38,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: 真实 provider 前置检查
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${AGENT_PROVIDER:?AGENT_PROVIDER 未配置}"
+          : "${AGENT_API_BASE_URL:?AGENT_API_BASE_URL 未配置}"
+          : "${AGENT_API_KEY:?AGENT_API_KEY 未配置}"
+          : "${AGENT_MODEL:?AGENT_MODEL 未配置}"
+          if [ "${AGENT_FALLBACK_TO_MOCK}" != "false" ]; then
+            echo "::error::AGENT_FALLBACK_TO_MOCK 必须为 false，当前=${AGENT_FALLBACK_TO_MOCK}"
+            exit 1
+          fi
+          echo "provider=${AGENT_PROVIDER} model=${AGENT_MODEL}"
+
       - name: 执行 real provider 阶段验收
-        run: python tests/run_stage_acceptance.py --suite "${{ inputs.suite }}"
+        run: python tests/run_stage_acceptance.py --suite "${{ inputs.suite }}" --summary-file output/stage_acceptance_summary_${{ inputs.suite }}.json
 
       - name: 检查阶段验收输出文件
         if: always()
         shell: bash
         run: |
           shopt -s nullglob
-          summary_files=(output/stage_acceptance_summary_${{ inputs.suite }}_*.json)
+          summary_files=(output/stage_acceptance_summary_${{ inputs.suite }}.json output/stage_acceptance_summary_${{ inputs.suite }}_*.json)
           output_files=(output/*)
           if [ ${#summary_files[@]} -eq 0 ]; then
             echo "::warning::未找到 summary 文件（output/stage_acceptance_summary_${{ inputs.suite }}_*.json）。"
@@ -65,7 +79,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: real-provider-stage-acceptance-summary
-          path: output/stage_acceptance_summary_${{ inputs.suite }}_*.json
+          path: |
+            output/stage_acceptance_summary_${{ inputs.suite }}.json
+            output/stage_acceptance_summary_${{ inputs.suite }}_*.json
           if-no-files-found: warn
 
       - name: 上传 real provider 阶段验收 output 工件
@@ -104,6 +120,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: real-provider-stage-acceptance-artifacts
-          path: output/*_artifacts_*/**
+          path: |
+            output/*_artifacts_*/**
+            output/real_provider_sequence_acceptance/**
           if-no-files-found: warn
           

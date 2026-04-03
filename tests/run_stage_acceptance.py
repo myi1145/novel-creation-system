@@ -256,6 +256,14 @@ def _write_real_provider_artifacts(
     )
     (artifact_dir / "failure_summary.json").write_text(json.dumps(failure_summary, ensure_ascii=False, indent=2), encoding="utf-8")
     (artifact_dir / "failure_summary.md").write_text(failure_markdown, encoding="utf-8")
+    sequence_acceptance_dirs = sorted(Path("output").glob("real_provider_sequence_acceptance/*"))
+    latest_sequence_dir = sequence_acceptance_dirs[-1] if sequence_acceptance_dirs else None
+    if latest_sequence_dir is not None:
+        for file_name in ["acceptance_summary.json", "sequence_batch_report.json"]:
+            source_file = latest_sequence_dir / file_name
+            if source_file.exists():
+                (artifact_dir / f"real_provider_{file_name}").write_text(source_file.read_text(encoding="utf-8"), encoding="utf-8")
+
     (artifact_dir / "manifest.json").write_text(
         json.dumps(
             {
@@ -269,7 +277,10 @@ def _write_real_provider_artifacts(
                     "diagnostics_overview.json",
                     "failure_summary.json",
                     "failure_summary.md",
+                    "real_provider_acceptance_summary.json",
+                    "real_provider_sequence_batch_report.json",
                 ],
+                "latest_sequence_acceptance_dir": latest_sequence_dir.as_posix() if latest_sequence_dir else None,
             },
             ensure_ascii=False,
             indent=2,
@@ -301,7 +312,7 @@ def main() -> int:
     )
     print(f"[stage-acceptance] summary_file={summary_path}")
 
-    if any(item[0] == "real-smoke" for item in execution_plan):
+    if any(item[0] in {"real-smoke", "real-acceptance"} for item in execution_plan):
         artifact_dir = _write_real_provider_artifacts(suite_arg=args.suite, summary_path=summary_path, suite_results=suite_results)
         print(f"[stage-acceptance] real_provider_artifact_dir={artifact_dir}")
 

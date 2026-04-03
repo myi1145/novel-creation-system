@@ -1,17 +1,23 @@
 """阶段三：真实 provider 下连续章节 + revise loop 协同验收。"""
 
+import json
 import unittest
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from tests.real_provider_sequence_acceptance_artifacts import export_real_provider_sequence_artifacts
 from tests.real_provider_test_helper import format_recent_agent_calls, preflight_gateway_or_skip, raise_skip_unless_real_provider_ready
 
 
 class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
     AGENT_CALLS_LIMIT = 200
+    FIXED_CHAPTER_COUNT = 2
+    ARTIFACT_ROOT = Path("output")
+    ACCEPTANCE_NAME = "real_provider_sequence_acceptance"
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(create_app())
@@ -77,6 +83,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
         gateway_status = self._gateway_preflight()
         project_id = self._create_project()
         self._init_canon_snapshot(project_id)
+        artifact_export: dict[str, Any] | None = None
 
         try:
             seq_resp = self.client.post(
@@ -84,7 +91,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
                 json={
                     "project_id": project_id,
                     "start_chapter_no": 1,
-                    "chapter_count": 2,
+                    "chapter_count": self.FIXED_CHAPTER_COUNT,
                     "current_volume_goal": "前两章建立主冲突并推进主角选择",
                     "testing_auto_select_first_blueprint": True,
                     "auto_revise_on_gate_failure": True,
@@ -100,8 +107,15 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
             )
             self.assertEqual(seq_resp.status_code, 200, msg=f"sequence 执行失败: {seq_resp.text}")
             data = seq_resp.json()["data"]
+            sequence_run_id = ((data.get("run") or {}).get("id") if isinstance(data.get("run"), dict) else None)
+            self.assertTrue(sequence_run_id, msg=f"sequence 返回缺少 run.id: {data}")
+            report_resp = self.client.get(f"/api/v1/workflows/chapter-sequence/reports/{sequence_run_id}")
+            self.assertEqual(report_resp.status_code, 200, msg=f"sequence batch report 拉取失败: {report_resp.text}")
+            batch_report_data = report_resp.json().get("data") or {}
+            data["sequence_batch_report"] = batch_report_data
             chapter_results = list(data.get("chapter_results") or [])
             self.assertGreaterEqual(len(chapter_results), 1, msg=f"sequence 未返回章节结果: {data}")
+            self.assertLessEqual(len(chapter_results), self.FIXED_CHAPTER_COUNT)
 
             # D. 多章结果可解释
             chapter_nos = [int(item.get("chapter_no") or 0) for item in chapter_results]
@@ -149,6 +163,26 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
                 self.assertIsNotNone(data.get("stopped_at_chapter_no"), msg=f"attention_required 但缺少 stopped_at_chapter_no: {data}")
                 self.assertTrue(data.get("next_action"), msg=f"attention_required 但缺少 next_action: {data}")
 
+            artifact_export = export_real_provider_sequence_artifacts(
+                output_root=self.ARTIFACT_ROOT,
+                acceptance_name=self.ACCEPTANCE_NAME,
+                provider_name=str(gateway_status.get("active_provider") or "unknown"),
+                model_name=str(gateway_status.get("model") or ""),
+                project_id=project_id,
+                workflow_run_id=sequence_run_id,
+                chapter_count=self.FIXED_CHAPTER_COUNT,
+                sequence_response_data=data,
+            )
+            self.assertTrue(Path(artifact_export["acceptance_summary_path"]).exists())
+            self.assertTrue(Path(artifact_export["sequence_batch_report_path"]).exists())
+            exported_meta = json.loads(Path(artifact_export["acceptance_summary_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(exported_meta.get("completed_chapter_count"), len(completed_items))
+            for item in completed_items:
+                chapter_file = Path(artifact_export["artifact_dir"]) / f"chapter_{int(item['chapter_no']):02d}.txt"
+                chapter_summary_file = Path(artifact_export["artifact_dir"]) / f"chapter_{int(item['chapter_no']):02d}_summary.json"
+                self.assertTrue(chapter_file.exists(), msg=f"缺少正文工件: {chapter_file}")
+                self.assertTrue(chapter_summary_file.exists(), msg=f"缺少摘要工件: {chapter_summary_file}")
+
             # B + C. agent calls 不允许 mock/fallback/degraded
             calls = self._list_agent_calls(project_id=project_id)
             self.assertGreaterEqual(len(calls), 1, msg=f"未查询到 agent 调用日志，project_id={project_id}")
@@ -173,6 +207,7 @@ class RealProviderMultiChapterRevisionAcceptanceTest(unittest.TestCase):
                 "sequence_workflow_run_id": (seq_resp.json().get("data", {}).get("run", {}).get("id") if "seq_resp" in locals() and seq_resp.status_code == 200 else None),
                 "stopped_at_chapter_no": (seq_resp.json().get("data", {}).get("stopped_at_chapter_no") if "seq_resp" in locals() and seq_resp.status_code == 200 else None),
                 "next_action": (seq_resp.json().get("data", {}).get("next_action") if "seq_resp" in locals() and seq_resp.status_code == 200 else None),
+                "artifact_export": artifact_export,
                 "chapter_digest": (
                     self._chapter_digest(seq_resp.json().get("data", {}).get("chapter_results") or [])
                     if "seq_resp" in locals() and seq_resp.status_code == 200
