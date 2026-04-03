@@ -33,6 +33,15 @@ class ProjectORM(Base):
 
 class WorkflowRunORM(Base):
     __tablename__ = "workflow_runs"
+    __table_args__ = (
+        Index(
+            "ix_workflow_runs_chapter_object_status",
+            "project_id",
+            "workflow_name",
+            "chapter_no",
+            "status",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_id)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)

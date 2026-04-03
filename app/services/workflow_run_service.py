@@ -16,6 +16,8 @@ def _new_trace_id() -> str:
 
 
 class WorkflowRunService:
+    _CHAPTER_CYCLE_ACTIVE_STATUSES = {"running", "paused", "manual_review", "attention_required"}
+
     def _get_run_or_raise(self, db: Session, workflow_run_id: str) -> WorkflowRunORM:
         run = db.get(WorkflowRunORM, workflow_run_id)
         if run is None:
@@ -61,6 +63,7 @@ class WorkflowRunService:
         source_ref: str | None = None,
         current_step: str = "chapter_goal_input",
         run_metadata: dict | None = None,
+        enforce_chapter_cycle_active_unique: bool = False,
     ) -> WorkflowRunORM:
         project = db.get(ProjectORM, project_id)
         if project is None:
@@ -85,6 +88,22 @@ class WorkflowRunService:
                 run.run_metadata = {**(run.run_metadata or {}), **run_metadata}
             db.flush()
             return run
+        if enforce_chapter_cycle_active_unique and workflow_name == "chapter_cycle_workflow_v1" and chapter_no is not None:
+            active_run = (
+                db.query(WorkflowRunORM)
+                .filter(
+                    WorkflowRunORM.project_id == project_id,
+                    WorkflowRunORM.workflow_name == workflow_name,
+                    WorkflowRunORM.chapter_no == chapter_no,
+                    WorkflowRunORM.status.in_(self._CHAPTER_CYCLE_ACTIVE_STATUSES),
+                )
+                .order_by(WorkflowRunORM.created_at.desc())
+                .first()
+            )
+            if active_run is not None:
+                raise ConflictError(
+                    f"当前项目 chapter_no={chapter_no} 已有活跃 chapter_cycle 运行（workflow_run_id={active_run.id}, status={active_run.status}），请先恢复或处理该运行"
+                )
         run = WorkflowRunORM(
             project_id=project_id,
             workflow_name=workflow_name,

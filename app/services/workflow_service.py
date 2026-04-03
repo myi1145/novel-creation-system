@@ -1004,6 +1004,12 @@ class WorkflowService:
         project = db.get(ProjectORM, request.project_id)
         if project is None:
             raise NotFoundError("项目不存在")
+        run_object_chapter_no = request.chapter_no
+        if request.workflow_run_id is None and run_object_chapter_no is None and request.chapter_goal_id:
+            goal_entity = db.get(ChapterGoalORM, request.chapter_goal_id)
+            if goal_entity is None or goal_entity.project_id != request.project_id:
+                raise NotFoundError("章目标不存在")
+            run_object_chapter_no = goal_entity.chapter_no
         existing_run = db.get(WorkflowRunORM, request.workflow_run_id) if request.workflow_run_id else None
         initial_run = workflow_run_service.ensure_run(
             db=db,
@@ -1011,10 +1017,11 @@ class WorkflowService:
             workflow_run_id=request.workflow_run_id,
             trace_id=request.trace_id,
             workflow_name="chapter_cycle_workflow_v1",
-            chapter_no=request.chapter_no,
+            chapter_no=run_object_chapter_no,
             source_type="chapter_cycle",
             current_step=(existing_run.current_step if existing_run else "chapter_cycle_started"),
             run_metadata={"entry": "execute_chapter_cycle"},
+            enforce_chapter_cycle_active_unique=True,
         )
         if request.workflow_run_id:
             if initial_run.status == "paused":
