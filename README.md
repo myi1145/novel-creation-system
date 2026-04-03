@@ -253,43 +253,66 @@ uvicorn app.main:app --reload
 - API 前缀：`/api/v1`
 - `APP_ENV`：`dev`（默认开发模式）
 
-### 9.5 环境分层与推荐启动方式（最小生产化收口）
+### 9.5 环境分层、示例配置与 preflight（最小生产化收口）
 
-当前统一约定四类模式：
+当前统一约定四类模式：`dev` / `ci` / `real-provider` / `prod`。
 
-1. `dev`（本地开发默认）
-   - 允许 `AGENT_PROVIDER=mock`；
-   - 允许 `AGENT_FALLBACK_TO_MOCK=true`；
-   - 允许 `AUTO_CREATE_TABLES=true` 作为本地开发兜底。
+仓库已提供示例配置文件（无真实 secret）：
 
-2. `ci`（自动化回归）
-   - 强制 `AUTO_CREATE_TABLES=false`，避免绕过迁移链路；
-   - 推荐通过 `alembic upgrade head` + `tests/run_stage_acceptance.py --suite core` 作为默认基线。
+- `.env.dev.example`
+- `.env.ci.example`
+- `.env.real-provider.example`
+- `.env.prod.example`
 
-3. `real-provider`（真实模型联调）
-   - 禁止 `AGENT_PROVIDER=mock`；
-   - 禁止 `AGENT_FALLBACK_TO_MOCK=true`；
-   - 禁止 `AUTO_CREATE_TABLES=true`，要求迁移链路已就绪。
+推荐统一顺序（先检查再启动）：
 
-4. `prod`（生产默认安全语义）
-   - 与 `real-provider` 一致：禁止 mock / fallback / auto-create；
-   - 启动前必须先执行 `alembic upgrade head`。
-
-示例（推荐）：
+1. 复制示例配置
 
 ```bash
 # dev
-APP_ENV=dev AGENT_PROVIDER=mock AGENT_FALLBACK_TO_MOCK=true uvicorn app.main:app --reload
-
-# ci
-APP_ENV=ci AUTO_CREATE_TABLES=false python tests/run_stage_acceptance.py --suite core
+cp .env.dev.example .env
 
 # real-provider
-APP_ENV=real-provider AGENT_PROVIDER=openai_compatible AGENT_FALLBACK_TO_MOCK=false uvicorn app.main:app
+cp .env.real-provider.example .env
 
 # prod
-APP_ENV=prod AGENT_PROVIDER=openai_compatible AGENT_FALLBACK_TO_MOCK=false uvicorn app.main:app
+cp .env.prod.example .env
 ```
+
+2. 执行 preflight（启动前检查）
+
+```bash
+python scripts/preflight_env.py --env dev
+python scripts/preflight_env.py --env real-provider
+python scripts/preflight_env.py --env prod
+```
+
+3. 非 dev 模式先执行 Alembic 迁移
+
+```bash
+alembic upgrade head
+```
+
+4. 启动服务或执行验收
+
+```bash
+# dev
+uvicorn app.main:app --reload
+
+# ci
+python tests/run_stage_acceptance.py --suite core
+
+# real-provider / prod
+uvicorn app.main:app
+```
+
+preflight 重点检查项：
+
+- `APP_ENV` 与 `--env` 是否一致；
+- `real-provider` / `prod` 是否错误使用 `AGENT_PROVIDER=mock`；
+- `real-provider` / `prod` 是否错误开启 `AGENT_FALLBACK_TO_MOCK=true`；
+- 非开发安全模式是否错误开启 `AUTO_CREATE_TABLES=true`；
+- `real-provider` / `prod` 是否缺少关键 provider 参数（`AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL`）。
 
 ### 9.6 健康检查
 
