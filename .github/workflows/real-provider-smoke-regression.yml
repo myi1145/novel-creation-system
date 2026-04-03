@@ -1,0 +1,84 @@
+name: Real Provider Smoke Regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  real-provider-smoke:
+    name: real provider smoke regression
+    runs-on: ubuntu-latest
+    env:
+      AGENT_PROVIDER: openai_compatible
+      AGENT_FALLBACK_TO_MOCK: "false"
+      AGENT_API_BASE_URL: ${{ vars.AGENT_API_BASE_URL }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      AGENT_MODEL: ${{ vars.AGENT_MODEL }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 执行 real-smoke 持续回归
+        run: python tests/run_stage_acceptance.py --suite real-smoke
+
+      - name: 检查 real-smoke 固定产物
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          summary_files=(output/stage_acceptance_summary_real-smoke_*.json)
+          artifact_dirs=(output/real-smoke_artifacts_*)
+          if [ ${#summary_files[@]} -eq 0 ]; then
+            echo "::warning::未找到 stage acceptance summary（output/stage_acceptance_summary_real-smoke_*.json）。"
+          else
+            echo "找到 ${#summary_files[@]} 个 summary 文件。"
+          fi
+          if [ ${#artifact_dirs[@]} -eq 0 ]; then
+            echo "::warning::未找到 real-smoke 固定工件目录（output/real-smoke_artifacts_*）。"
+          else
+            echo "找到 ${#artifact_dirs[@]} 个 real-smoke 工件目录："
+            printf '%s\n' "${artifact_dirs[@]}"
+          fi
+
+      - name: 校验 real-smoke manifest 完整性（硬校验）
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifact_dirs=(output/real-smoke_artifacts_*)
+          if [ ${#artifact_dirs[@]} -eq 0 ]; then
+            echo "未找到 real-smoke artifact 目录，无法执行 manifest 校验。"
+            exit 1
+          fi
+          for dir in "${artifact_dirs[@]}"; do
+            echo "校验 artifact 目录: ${dir}"
+            python tests/validate_real_smoke_artifacts.py --artifact-dir "${dir}"
+          done
+
+      - name: 上传 real-smoke summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-provider-smoke-summary
+          path: output/stage_acceptance_summary_real-smoke_*.json
+          if-no-files-found: warn
+
+      - name: 上传 real-smoke 可归档产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-provider-smoke-artifacts
+          path: output/real-smoke_artifacts_*/**
+          if-no-files-found: warn
