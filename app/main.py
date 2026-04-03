@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import setup_logging
-from app.db.base import init_db
+from app.db.base import ensure_runtime_defaults, init_db
 from app.middleware.request_logging import RequestLoggingMiddleware
 from app.routers.api_v1 import api_router
 from app.routers.health import router as health_router
@@ -15,6 +15,8 @@ from app.routers.health import router as health_router
 async def lifespan(_: FastAPI):
     if settings.auto_create_tables:
         init_db()
+    else:
+        ensure_runtime_defaults()
     yield
 
 

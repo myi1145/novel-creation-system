@@ -337,3 +337,20 @@ README 只负责：
 4. 补测试
 5. 更新 README / 文档
 6. 最后列出改动文件、测试命令、结果
+
+---
+
+## 12. 本次任务结果（Alembic 迁移链路收口）
+
+本轮任务已完成以下收口项：
+
+- 已建立正式 Alembic 迁移链路（`alembic.ini`、`alembic/env.py`、baseline migration）。
+- 已明确迁移主路径为 `alembic upgrade head`（空库初始化与已有库升级统一走迁移链路）。
+- 应用启动时默认不再走自动建表；`AUTO_CREATE_TABLES` 已降级为开发兜底开关（默认 `false`）。
+- README 已更新“新库初始化 / 已有库升级 / 开发兜底”命令与语义。
+
+最小验证口径：
+
+- migration smoke test：通过（空 sqlite 可 `alembic upgrade head`）。
+- config/init path test：通过（关闭 `AUTO_CREATE_TABLES` 且无 schema 时启动失败并提示迁移命令）。
+- 开发兜底回归：通过（`AUTO_CREATE_TABLES=true` 时应用可自动建表并启动）。

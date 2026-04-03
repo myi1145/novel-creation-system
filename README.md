@@ -86,7 +86,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 - 默认配置仍偏联调（如 `mock` provider + 可 fallback）；真实模型效果依赖外部环境与参数；
 - 默认回归仍以 mock provider 为主；真实 provider 需单独配置并按 smoke / acceptance 入口验收，不能视为开箱即跑；
 - 当前阶段目标仍是“真实 provider 联调 + 生产化验收基线”持续补齐，不应高估为 fully autonomous production system；
-- 存储层目前以 `AUTO_CREATE_TABLES` 为主，尚未集成 Alembic 迁移链路；
+- 已收口 Alembic 迁移链路，`AUTO_CREATE_TABLES` 仅保留开发兜底语义；
 - 运维级能力（多环境发布策略、长期稳定性基线、平台化治理）仍有限。
 
 ---
@@ -178,8 +178,8 @@ python tests/run_stage_acceptance.py --suite all
    - 多数规则为启发式与阈值策略，覆盖深度和泛化能力仍在迭代。
 2. **自动修订闭环尚未全面收口**
    - 闸门已能检测与分级，但并非所有失败项都自动完成高质量修订并二次通过。
-3. **生产化能力未完全到位**
-   - 迁移体系、默认策略治理、运维稳定性与平台化能力仍需补齐。
+3. **生产化能力仍在继续增强**
+   - 已具备正式迁移链路，但运维稳定性基线与平台化治理仍需持续补齐。
 4. **题材规则包仍在扩展**
    - 已有通用底座 + 配置层机制，但不同题材的规则深度与一致性仍有差异。
 5. **真实 provider 效果依赖外部条件**
@@ -192,7 +192,8 @@ python tests/run_stage_acceptance.py --suite all
 ```text
 app/
   core/        # 配置、异常、日志与观测上下文
-  db/          # SQLAlchemy 模型、会话、建表初始化
+  db/          # SQLAlchemy 模型、会话、数据库初始化兜底逻辑
+alembic/       # Alembic 迁移链路与版本脚本
   domain/      # 领域枚举与常量
   routers/     # API 路由入口（/api/v1）
   schemas/     # Pydantic 请求/响应与结构化对象协议
@@ -219,7 +220,27 @@ output/        # 部分验收脚本导出的正文/摘要工件
 pip install -r requirements.txt
 ```
 
-### 9.3 启动服务
+### 9.3 初始化数据库（推荐主路径）
+
+新库初始化（空数据库）：
+
+```bash
+alembic upgrade head
+```
+
+已有库升级（增量迁移）：
+
+```bash
+alembic upgrade head
+```
+
+仅在本地开发临时兜底场景下，可启用自动建表：
+
+```bash
+AUTO_CREATE_TABLES=true uvicorn app.main:app --reload
+```
+
+### 9.4 启动服务
 
 ```bash
 uvicorn app.main:app --reload
@@ -231,7 +252,7 @@ uvicorn app.main:app --reload
 - Port：`8000`
 - API 前缀：`/api/v1`
 
-### 9.4 健康检查
+### 9.5 健康检查
 
 - 全局健康：`GET /health`
 - API 连通性：`GET /api/v1/ping`
@@ -246,7 +267,7 @@ uvicorn app.main:app --reload
 - `APP_VERSION`
 - `DEBUG`
 - `DATABASE_URL`（默认 SQLite）
-- `AUTO_CREATE_TABLES`
+- `AUTO_CREATE_TABLES`（默认 `false`，仅开发兜底）
 
 ### 10.2 Agent / Provider
 
