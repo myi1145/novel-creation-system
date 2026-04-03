@@ -195,17 +195,17 @@
 
 ### 下一步唯一目标
 
-**收口 CI 迁移基线：把“空数据库 `alembic upgrade head`”固化为默认 CI 强校验门槛。**
+**收口环境分层与启动模式语义：明确 dev / ci / real-provider / prod 四类模式默认配置与边界。**
 
 一句话解释：
 
-当前系统虽然已经完成 Alembic baseline 与初始化主路径切换，  
-但迁移链路尚未成为稳定 CI 合并门槛。  
-下一步必须把“空库升级到 head”推进到默认 CI 强校验：
+当前系统已经完成 CI 迁移基线（空库 `alembic upgrade head`）并接入默认 core stage acceptance，  
+下一步要把“联调方便”与“生产安全默认”进一步分层，避免环境语义混用：
 
-- CI 干净环境真实执行 `alembic upgrade head`
-- 迁移失败可直接让 PR 变红
-- 迁移 smoke test 与阶段验收并行固化
+- `dev` 保留 mock/fallback 与 `AUTO_CREATE_TABLES` 开发兜底语义
+- `ci` 强化配置边界，避免模糊默认值
+- `real-provider` / `prod` 明确禁止 mock/fallback 与 auto-create
+- README / handoff / 配置校验口径一致
 
 ---
 
@@ -213,14 +213,14 @@
 
 ### 任务名称
 
-**CI 迁移基线收口（Migration Smoke Gate）**
+**环境分层与启动模式收口（dev / ci / real-provider / prod）**
 
 ### 本次只做什么
 
-- 在默认 CI 中增加 migration smoke gate（空库 upgrade head）
-- 固化 Python 可控 Alembic entrypoint 的执行路径，避免依赖本地 CLI 安装偶然性
-- 收紧迁移测试，确保 CI 中不以 skip 替代真实升级
-- 更新阶段文档，明确本轮结果与下一步口径
+- 收口配置层模式语义，最小化引入明确边界校验
+- 明确不同模式下允许/禁止的默认值（mock / fallback / auto-create）
+- 更新 README 启动指引与关键环境变量说明
+- 更新阶段文档，明确 CI 迁移基线已完成与下一步唯一目标
 
 ### 本次不要做什么
 
@@ -329,7 +329,7 @@ README 只负责：
 - real-provider 验收工件归属防串档已完成
 
 本次唯一目标：
-- 收口 Alembic 迁移链路，弱化 AUTO_CREATE_TABLES 为开发兜底选项
+- 收口环境分层与启动模式语义，明确 dev / ci / real-provider / prod 四类模式边界
 
 不要做：
 - 不改 workflow 主链逻辑
@@ -338,9 +338,9 @@ README 只负责：
 - 不做容器化/监控/权限系统
 
 验收标准：
-- alembic upgrade head 可在空数据库执行成功
-- 应用在开发模式下仍可启动
-- README 写清初始化/升级命令
+- dev / ci / real-provider / prod 四类模式默认语义清晰
+- 非开发模式的危险默认值可被配置校验拦截
+- README 写清环境分层启动方式与关键变量
 - /md/status/current_stage_handoff.md 更新任务结果
 
 输出要求：
@@ -353,13 +353,14 @@ README 只负责：
 
 ---
 
-## 12. 本次任务结果（Alembic 迁移链路收口）
+## 12. 本次任务结果（阶段基线状态）
 
 本轮任务已完成以下收口项：
 
 - 已建立正式 Alembic 迁移链路（`alembic.ini`、`alembic/env.py`、baseline migration）。
 - 已明确迁移主路径为 `alembic upgrade head`（空库初始化与已有库升级统一走迁移链路）。
 - 应用启动时默认不再走自动建表；`AUTO_CREATE_TABLES` 已降级为开发兜底开关（默认 `false`）。
+- 默认 CI（core stage acceptance）已接入空库 `alembic upgrade head` 强校验门槛。
 - README 已更新“新库初始化 / 已有库升级 / 开发兜底”命令与语义。
 
 最小验证口径：

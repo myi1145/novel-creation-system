@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
+from pydantic.aliases import AliasChoices
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +19,10 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     api_prefix: str = "/api/v1"
+    app_env: Literal["dev", "ci", "real-provider", "prod"] = Field(
+        default="dev",
+        validation_alias=AliasChoices("APP_ENV", "RUNTIME_MODE"),
+    )
     database_url: str = f"sqlite:///{DEFAULT_SQLITE_PATH.as_posix()}"
     auto_create_tables: bool = False
 
@@ -58,6 +65,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     @property
@@ -72,6 +80,27 @@ class Settings(BaseSettings):
             except ValueError:
                 continue
         return result
+
+    @model_validator(mode="after")
+    def validate_env_profile_safety(self) -> "Settings":
+        mode = self.app_env.strip().lower()
+        provider = self.agent_provider.strip().lower()
+
+        if mode == "ci" and self.auto_create_tables:
+            raise ValueError(
+                "CI 模式禁止 AUTO_CREATE_TABLES=true，请先执行 alembic upgrade head。"
+            )
+
+        if mode in {"real-provider", "prod"}:
+            if provider == "mock":
+                raise ValueError(f"{mode} 模式禁止 AGENT_PROVIDER=mock。")
+            if self.agent_fallback_to_mock:
+                raise ValueError(f"{mode} 模式禁止 AGENT_FALLBACK_TO_MOCK=true。")
+            if self.auto_create_tables:
+                raise ValueError(
+                    f"{mode} 模式禁止 AUTO_CREATE_TABLES=true，请先执行 alembic upgrade head。"
+                )
+        return self
 
 
 settings = Settings()

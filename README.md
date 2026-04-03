@@ -251,8 +251,47 @@ uvicorn app.main:app --reload
 - Host：`0.0.0.0`
 - Port：`8000`
 - API 前缀：`/api/v1`
+- `APP_ENV`：`dev`（默认开发模式）
 
-### 9.5 健康检查
+### 9.5 环境分层与推荐启动方式（最小生产化收口）
+
+当前统一约定四类模式：
+
+1. `dev`（本地开发默认）
+   - 允许 `AGENT_PROVIDER=mock`；
+   - 允许 `AGENT_FALLBACK_TO_MOCK=true`；
+   - 允许 `AUTO_CREATE_TABLES=true` 作为本地开发兜底。
+
+2. `ci`（自动化回归）
+   - 强制 `AUTO_CREATE_TABLES=false`，避免绕过迁移链路；
+   - 推荐通过 `alembic upgrade head` + `tests/run_stage_acceptance.py --suite core` 作为默认基线。
+
+3. `real-provider`（真实模型联调）
+   - 禁止 `AGENT_PROVIDER=mock`；
+   - 禁止 `AGENT_FALLBACK_TO_MOCK=true`；
+   - 禁止 `AUTO_CREATE_TABLES=true`，要求迁移链路已就绪。
+
+4. `prod`（生产默认安全语义）
+   - 与 `real-provider` 一致：禁止 mock / fallback / auto-create；
+   - 启动前必须先执行 `alembic upgrade head`。
+
+示例（推荐）：
+
+```bash
+# dev
+APP_ENV=dev AGENT_PROVIDER=mock AGENT_FALLBACK_TO_MOCK=true uvicorn app.main:app --reload
+
+# ci
+APP_ENV=ci AUTO_CREATE_TABLES=false python tests/run_stage_acceptance.py --suite core
+
+# real-provider
+APP_ENV=real-provider AGENT_PROVIDER=openai_compatible AGENT_FALLBACK_TO_MOCK=false uvicorn app.main:app
+
+# prod
+APP_ENV=prod AGENT_PROVIDER=openai_compatible AGENT_FALLBACK_TO_MOCK=false uvicorn app.main:app
+```
+
+### 9.6 健康检查
 
 - 全局健康：`GET /health`
 - API 连通性：`GET /api/v1/ping`
@@ -265,6 +304,7 @@ uvicorn app.main:app --reload
 
 - `APP_NAME`
 - `APP_VERSION`
+- `APP_ENV`（`dev|ci|real-provider|prod`，默认 `dev`）
 - `DEBUG`
 - `DATABASE_URL`（默认 SQLite）
 - `AUTO_CREATE_TABLES`（默认 `false`，仅开发兜底）
