@@ -131,6 +131,35 @@
 
 ---
 
+### 3.6 环境分层与启动模式语义已完成第一轮收口
+
+已完成环境模式边界统一，包括：
+
+- `APP_ENV=dev|ci|real-provider|prod` 的默认语义与边界校验
+- `real-provider` / `prod` 禁止 mock / fallback / auto-create
+- `ci` 禁止 `AUTO_CREATE_TABLES=true`
+- README / 配置校验 / 阶段交接口径对齐
+
+结论：
+
+**环境分层已从“文档约定”推进到“配置校验可执行”。**
+
+---
+
+### 3.7 示例配置与运行前检查（preflight）收口已完成
+
+已完成最小生产化运行入口收口，包括：
+
+- 新增 `dev / ci / real-provider / prod` 示例 `.env` 文件
+- 新增统一 preflight 入口（启动前关键危险配置检查）
+- README 增加“示例配置 -> preflight -> Alembic -> 启动/验收”的推荐顺序
+
+结论：
+
+**新协作者已可按仓库示例配置快速起步，并在启动前明确识别高风险配置。**
+
+---
+
 ## 4. 当前不要再动的区域
 
 除非出现明确 bug 或回归，否则当前不要再把主要精力投到下面这些区域：
@@ -195,17 +224,12 @@
 
 ### 下一步唯一目标
 
-**收口环境分层与启动模式语义：明确 dev / ci / real-provider / prod 四类模式默认配置与边界。**
+**收口“真实 provider / prod 运行期验收与回滚演练”最小闭环。**
 
 一句话解释：
 
-当前系统已经完成 CI 迁移基线（空库 `alembic upgrade head`）并接入默认 core stage acceptance，  
-下一步要把“联调方便”与“生产安全默认”进一步分层，避免环境语义混用：
-
-- `dev` 保留 mock/fallback 与 `AUTO_CREATE_TABLES` 开发兜底语义
-- `ci` 强化配置边界，避免模糊默认值
-- `real-provider` / `prod` 明确禁止 mock/fallback 与 auto-create
-- README / handoff / 配置校验口径一致
+环境分层与 preflight 已完成后，下一刀应把重点放在“上线动作可验证、失败可回退”的最小运行手册与演练入口，
+避免继续扩主链功能。
 
 ---
 
@@ -213,22 +237,20 @@
 
 ### 任务名称
 
-**环境分层与启动模式收口（dev / ci / real-provider / prod）**
+**真实 provider / prod 运行期验收与回滚演练收口（最小版）**
 
 ### 本次只做什么
 
-- 收口配置层模式语义，最小化引入明确边界校验
-- 明确不同模式下允许/禁止的默认值（mock / fallback / auto-create）
-- 更新 README 启动指引与关键环境变量说明
-- 更新阶段文档，明确 CI 迁移基线已完成与下一步唯一目标
+- 明确运行期验收 checklist（迁移、preflight、健康检查、核心验收）
+- 增加最小可执行的回滚演练入口（文档或轻量脚本）
+- 固化“失败后如何止损/回退”的最短路径
 
 ### 本次不要做什么
 
 - 不改 workflow 主链逻辑
 - 不改 gate / publish / changeset 规则
-- 不改 provider gateway
-- 不做容器化
-- 不做监控平台
+- 不改 provider gateway 核心业务逻辑
+- 不做容器化/监控/权限系统
 - 不扩业务功能
 
 ---
