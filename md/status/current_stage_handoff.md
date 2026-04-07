@@ -154,7 +154,7 @@
 
 - 新增 `dev / ci / real-provider / prod` 示例 `.env` 文件
 - 新增统一 preflight 入口（启动前关键危险配置检查）
-- README 增加“示例配置 -> preflight -> Alembic -> 启动/验收”的推荐顺序
+- README 增加“preflight -> Alembic -> runbook_checks -> release_signoff -> release_registry”的统一入口顺序
 
 结论：
 
@@ -277,6 +277,7 @@ release registry 已完成后，下一步唯一目标应在新任务单中单独
 - 不改 gate / publish / changeset 规则
 - 不改 provider gateway 核心业务逻辑
 - 不改 Alembic / preflight / runbook / signoff 业务逻辑
+- 统一 Alembic 推荐命令写法为 `alembic upgrade head`
 - 不做容器化/监控/权限系统
 - 不扩业务功能
 

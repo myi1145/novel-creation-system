@@ -43,3 +43,14 @@
 2. `overall_result=prod_release_blocked`：不允许 `approve prod`。
 3. 仅当 `overall_result=passed` 时允许 `approve`。
 4. `rollback` 仅用于“已执行上线动作后”的回退记录，不与 `reject` 混用。
+
+## 7. 台账与 latest pointer（release_registry）
+
+- `release_signoff` 成功后自动刷新 `output/release_registry/`。
+- `release_index.json` 的 entries 复用以下关键字段口径：
+  - `overall_result`
+  - `recommended_action`
+  - `linked_evidence_dir`
+  - `linked_runbook_summary_json`
+  - `linked_stage_acceptance_summary`
+- latest pointer 统一包含 `latest_status_summary`，用于快速定位“先看 signoff，再追溯 evidence”。

@@ -86,6 +86,16 @@ class ReleaseRegistryTest(unittest.TestCase):
                 self.assertTrue(first_entry["linked_evidence_dir"].endswith("_real-provider"))
                 self.assertTrue(first_entry["linked_runbook_summary_json"].endswith("runbook_summary.json"))
                 self.assertIn("stage_acceptance_summary", first_entry["linked_stage_acceptance_summary"])
+                self.assertIn("latest_status_summary", release_index["latest_pointers"]["latest_runbook_evidence"])
+                self.assertIn("recommended_action", release_index["latest_pointers"]["latest_runbook_evidence"])
+
+                latest_runbook_evidence = json.loads(
+                    Path("output/release_registry/latest_runbook_evidence.json").read_text(encoding="utf-8")
+                )
+                self.assertIn("linked_runbook_summary_json", latest_runbook_evidence)
+                self.assertIn("linked_stage_acceptance_summary", latest_runbook_evidence)
+                self.assertIn("overall_result", latest_runbook_evidence)
+                self.assertIn("recommended_action", latest_runbook_evidence)
 
                 newer_prod_evidence = Path("output/runbook_evidence/20260101T020000Z_prod")
                 newer_prod_evidence.mkdir(parents=True, exist_ok=True)

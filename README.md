@@ -16,15 +16,7 @@
 
 README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md` 负责维护“当前阶段、已完成内容、下一步唯一目标、任务交接口径”。新窗口/新任务请先按该文档对齐上下文。
 
-当前分支的较早阶段背景为：**修订执行层收口 + 修订决策层起步阶段**（仅作阶段背景说明，不作为当前任务交接基准）。
-
-上述背景用于解释能力演进；当前阶段判断请始终以 `current_stage_handoff.md` 为准。背景要点如下：
-
-- 单章主链（目标 -> 蓝图 -> 场景 -> 草稿 -> Gate -> ChangeSet -> Publish）已经能跑通并可验收；
-- 修订执行层已基本收口，revision policy 决策开始被 workflow 真实消费并驱动分流；
-- Publish Delta Gate 已从伪比较切到真实 baseline 比较，sequence 报告层开始暴露单章关键决策结果；
-- 当前阶段验收基线与真实 provider 手动验收链路已完成验证；
-- 真实 provider 联调与生产化验收仍是下一阶段重点，当前不应视为稳定生产自治系统。
+为避免口径漂移：README 不定义当前阶段结论，只提供执行入口与推荐顺序；阶段判断与任务边界一律以 `current_stage_handoff.md` 为准。
 
 ---
 
@@ -287,7 +279,7 @@ python scripts/preflight_env.py --env real-provider
 python scripts/preflight_env.py --env prod
 ```
 
-3. 非 dev 模式先执行 Alembic 迁移
+3. 非 dev 模式先执行 Alembic 迁移（统一推荐命令）
 
 ```bash
 alembic upgrade head
@@ -332,6 +324,14 @@ python scripts/runbook_checks.py --env real-provider --env-file .env --stage-sui
 # prod 放行前验收（服务已启动时加 health 检查）
 python scripts/runbook_checks.py --env prod --env-file .env --health-url http://127.0.0.1:8000/health --stage-suite real-acceptance
 ```
+
+统一发布入口顺序（文档/脚本同口径）：
+
+1. `preflight`（`python scripts/preflight_env.py ...`）
+2. `alembic`（`alembic upgrade head`）
+3. `runbook_checks`（生成 `output/runbook_evidence/`）
+4. `release_signoff`（生成 `output/release_signoff/`）
+5. `release_registry`（由 `release_signoff` 自动刷新 `output/release_registry/`）
 
 运行完成后会自动输出运行期验收证据包到 `output/runbook_evidence/<timestamp>_<env>/`，至少包含 `runbook_summary.json` 与 `runbook_summary.md`，用于人工复核、放行记录与失败审计。
 
