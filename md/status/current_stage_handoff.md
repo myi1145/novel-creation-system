@@ -8,39 +8,41 @@
 
 ## 1. 当前阶段
 
-**当前阶段：最小生产化基础收口**
+**当前阶段：最小生产化基础收口（后段）**
 
-当前项目已经不再属于：
+### 当前阶段状态结论（一句话版）
 
-- V1 架构落图期
-- 单章闭环验证期
+项目已从“工程可运行”推进到“运行可追溯、可签署”的阶段，当前处于“最小生产化基础收口”的后段。
 
-当前项目已经进入并基本完成了：
+### 当前阶段状态结论（展开版）
 
-- 连续章节闭环收口
-- 真实 provider 连续章节验收基线收口
+当前项目已完成单章主链闭环、连续章节闭环第一轮、真实 provider 连续章节验收基线，以及 Alembic、CI 迁移基线、环境分层、preflight、runbook、运行期证据包与 signoff 记录等关键收口动作。
 
-因此，当前主战场已经从“workflow 主链补洞”切换为：
+系统已经具备最小生产化基础：
 
-**最小生产化基础收口**
+- 可迁移
+- 可预检
+- 可验收
+- 可留证
+- 可签署
 
-这意味着后续重点不再是继续扩 chapter workflow 功能，  
-而是收口：
+阶段边界判断如下：
 
-- 数据层可升级
-- 环境初始化一致性
-- 验收与发布边界
-- 最小工程化运行基础
+- **已不属于**：V1 架构落图期、单章闭环验证期、连续章节刚起步期。
+- **当前属于**：最小生产化基础收口后段（以收口治理口径与可追溯发布边界为主）。
+- **仍未到达**：完整生产发布治理系统、平台化/运维化 fully mature 状态。
+
+因此，当前主战场不是扩 workflow 主链，而是把已存在的验收、证据、签署结果组织成稳定可复用的发布台账视图与最新状态指针。
 
 ---
 
 ## 2. 当前阶段判断（一句话版）
 
-现在系统已经不是“能不能跑起来”的问题，  
-而是要把已经跑通、跑稳、可验收的能力，推进到：
+现在系统的核心问题已不是“能不能跑起来”，而是确保“已经跑通并可验收”的能力能够被稳定追踪与复用。
 
-**可升级、可发布、可控变更**
+当前判断：
 
+**最小生产化基础已具备，阶段任务进入后段收口。**
 ---
 
 ## 3. 当前已经明确完成的内容
@@ -160,6 +162,21 @@
 
 ---
 
+### 3.8 放行记录与人工签署口径已完成（release_signoff）
+
+已完成放行记录与人工签署最小闭环，包括：
+
+- `scripts/release_signoff.py` 可生成结构化签署记录
+- 产出 `release_signoff.json` + `release_signoff.md`
+- 与 runbook 证据包可建立关联，支持人工复核与留档
+- 已提供签署模板与 runbook 文档入口，形成可执行操作路径
+
+结论：
+
+**放行记录与人工签署不再是“下一步目标”，已正式纳入“当前已完成基线”。**
+
+---
+
 ## 4. 当前不要再动的区域
 
 除非出现明确 bug 或回归，否则当前不要再把主要精力投到下面这些区域：
@@ -224,12 +241,11 @@
 
 ### 下一步唯一目标
 
-**收口“放行记录与人工签署口径”最小闭环。**
+**收口“放行台账索引与最新状态指针”最小版。**
 
 一句话解释：
 
-运行期证据包已具备后，下一刀应把重点放在“谁基于哪份证据做了什么决策”的最小可追溯记录，
-避免放行/拒绝/回退决策只停留在口头或聊天记录。
+在 runbook 证据包与 release signoff 都已具备的前提下，下一刀只做“索引与指针收口”，把既有 `runbook_evidence / release_signoff / stage_acceptance_summary` 串成统一入口，让新窗口可以一眼定位最新放行结论与对应证据。
 
 ---
 
@@ -237,19 +253,26 @@
 
 ### 任务名称
 
-**放行记录与人工签署口径收口（最小版）**
+**放行台账索引与最新状态指针收口（最小版）**
 
 ### 本次只做什么
 
-- 增加最小 signoff 入口，沉淀 `approve / reject / rollback` 决策记录
-- 固化人工签署口径（startup_blocked / prod_release_blocked / passed 三类约束）
-- 输出 `release_signoff.json` + `release_signoff.md` 并关联 runbook 证据包
+- 建立最小台账索引（仅索引，不新增业务逻辑），串联：
+  - `runbook_evidence`
+  - `release_signoff`
+  - `stage_acceptance_summary`
+- 提供“最新状态指针”最小入口，明确：
+  - 最新一次 prod signoff 是哪份记录
+  - 最新一次 real-provider 验收对应哪份证据
+  - 新窗口应优先查看哪个状态目录/文件
+- 保持口径一致：当前阶段判断、证据位置、签署状态可在 handoff 一处读懂。
 
 ### 本次不要做什么
 
 - 不改 workflow 主链逻辑
 - 不改 gate / publish / changeset 规则
 - 不改 provider gateway 核心业务逻辑
+- 不改 Alembic / preflight / runbook / signoff 业务逻辑
 - 不做容器化/监控/权限系统
 - 不扩业务功能
 
@@ -336,55 +359,56 @@ README 只负责：
 
 ## 11. 当前推荐的任务下发模板
 
-可直接复制后修改（已翻到当前目标：放行记录与人工签署口径）：
+可直接复制后修改（已翻到当前目标：放行台账索引与最新状态指针收口）：
 
 ```text
 任务类型：发布任务单
 
 项目：novel-creation-system
-当前阶段：最小生产化基础收口
+当前阶段：最小生产化基础收口（后段）
 
-当前已完成：
-- chapter-cycle 运行层幂等与唯一活跃运行控制已完成
-- chapter-sequence 断点续跑 / 恢复执行已完成
-- real-provider 连续章节验收基线已完成
-- real-provider 验收工件归属防串档已完成
+当前事实（以 current main / 当前文档为准）：
+- 单章主链闭环已完成
+- 连续章节闭环已完成第一轮
+- 真实 provider 连续章节验收基线已完成
+- Alembic 迁移链路 + 默认 CI migration smoke gate 已完成
+- 环境分层与启动模式语义已完成
+- 示例配置 + preflight 已完成
+- real-provider / prod runbook 与回滚演练入口已完成
+- 运行期验收证据包已完成
+- 放行记录与人工签署入口（release_signoff）已完成
 
 本次唯一目标：
-- 收口“放行记录与人工签署口径”，让 runbook 证据后有统一决策记录
+- 收口“放行台账索引与最新状态指针（最小版）”
 
 不要做：
 - 不改 workflow 主链逻辑
 - 不改 gate / publish / changeset 规则
-- 不改 provider gateway 核心业务逻辑
-- 不改 Alembic 迁移本体
-- 不做容器化/监控/权限系统
-- 不扩业务功能
-- 不重写 runbook 主逻辑
+- 不改 provider gateway
+- 不改 Alembic / preflight / runbook / signoff 业务逻辑
+- 不新增功能
+- 不做大范围 README 重写
 
 重点改动对象：
-- scripts/runbook_checks.py（如需挂接放行记录）
-- scripts/release_signoff.py（可新增）
-- md/status/runbook_real_provider_prod.md
 - md/status/current_stage_handoff.md
-- README.md（如需最小补充入口）
-- tests/test_release_signoff.py（新增）
-- md/status/release_signoff_template.md（可新增）
+- README.md（仅当需要最小同步一句入口/阶段口径时再改）
+- 如确有必要，可最小调整：
+  - md/status/runbook_real_provider_prod.md
+  - md/status/release_signoff_template.md
 
 验收标准：
-- 存在最小可执行的放行记录入口
-- 可输出 `release_signoff.json` 与 `release_signoff.md`
-- 可基于 `runbook_summary.json` 的 `overall_result` 做最小规则约束
-- 记录可追溯 operator/decision/evidence/reason
-- README / runbook / handoff 可找到入口
+1. handoff 内存在明确“当前阶段状态结论”
+2. signoff 已从“下一步”翻入“已完成”
+3. 下一步唯一目标已翻到“台账索引 + 最新状态指针”
+4. 新窗口仅看 handoff 即可定位当前状态、阶段边界与下一步
+5. 不触碰业务逻辑
 
 输出要求：
 1. 说明理解
-2. 给出最小改动方案
-3. 实现 signoff 入口与记录文件
-4. 补测试
-5. 更新 README / runbook / handoff
-6. 最后列出改动文件、测试命令、结果
+2. 给出最小文档改动方案
+3. 更新 handoff（必要时最小同步 README）
+4. 最后列出改动文件、改动原因、阶段判断、下一步目标
+```
 
 ---
 
@@ -398,7 +422,8 @@ README 只负责：
 - 证据包最小内容：`runbook_summary.json` + `runbook_summary.md`。
 - 结果语义统一：`passed / startup_blocked / prod_release_blocked`。
 - 证据包关联：runbook 文档入口 + 最近 stage acceptance summary 路径（若存在）。
+- 放行记录与人工签署入口（`release_signoff`）已完成并可留档。
 
 下一刀（当前唯一目标）：
 
-- 收口“放行记录与人工签署口径”最小闭环。
+- 收口“放行台账索引与最新状态指针”最小版（仅做索引与指针，不新增主功能）。
