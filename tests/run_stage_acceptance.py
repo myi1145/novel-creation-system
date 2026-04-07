@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -102,6 +103,111 @@ def _write_summary(summary_items: list[dict[str, Any]], suite_arg: str, summary_
         "overall_exit_code": 0 if all(item["exit_code"] == 0 for item in summary_items) else 1,
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return output_path
+
+
+
+
+def _detect_provider_mode() -> str:
+    provider = os.getenv("AGENT_PROVIDER", "").strip()
+    return provider or "unknown"
+
+
+def _detect_fallback_disabled() -> bool:
+    fallback = os.getenv("AGENT_FALLBACK_TO_MOCK", "").strip().lower()
+    return fallback == "false"
+
+
+def _count_real_smoke_required_artifacts(artifact_dir: Path | None) -> tuple[bool, int]:
+    if artifact_dir is None:
+        return False, 0
+
+    try:
+        from tests.validate_real_smoke_artifacts import REQUIRED_FILES
+    except Exception:  # noqa: BLE001
+        REQUIRED_FILES = []
+
+    count = 0
+    for file_name in REQUIRED_FILES:
+        if (artifact_dir / file_name).exists():
+            count += 1
+    return bool(REQUIRED_FILES) and count == len(REQUIRED_FILES), count
+
+
+def _infer_failure_bucket(*, overall_exit_code: int, output_artifact_present: bool, raw_output: str) -> str:
+    if overall_exit_code == 0 and output_artifact_present:
+        return "passed"
+    if overall_exit_code == 0 and not output_artifact_present:
+        return "artifact_missing"
+
+    lowered = raw_output.lower()
+    config_keywords = [
+        "未配置",
+        "must be",
+        "missing",
+        "precondition",
+        "environment",
+        "agent_api_key",
+        "agent_api_base_url",
+        "agent_model",
+        "agent_provider",
+    ]
+    runtime_keywords = [
+        "timeout",
+        "timed out",
+        "connection",
+        "network",
+        "provider",
+        "rate",
+        "circuit",
+        "api",
+    ]
+
+    if any(keyword in lowered for keyword in config_keywords):
+        return "config_or_precondition"
+    if any(keyword in lowered for keyword in runtime_keywords):
+        return "provider_or_runtime"
+    return "unknown_failure"
+
+
+def _write_real_smoke_stability_record(
+    *,
+    summary_path: Path,
+    suite_results: list[dict[str, Any]],
+    artifact_dir: Path | None,
+) -> Path:
+    smoke_result = next((item for item in suite_results if item.get("suite") == "real-smoke"), None)
+    modules = list(smoke_result.get("modules", [])) if smoke_result else []
+    contains_skip = bool(smoke_result.get("contains_skip")) if smoke_result else False
+    raw_output = str(smoke_result.get("raw_output") or "") if smoke_result else ""
+    overall_exit_code = 0 if all(item.get("exit_code") == 0 for item in suite_results) else 1
+    output_artifact_present, output_artifact_count = _count_real_smoke_required_artifacts(artifact_dir)
+
+    payload = {
+        "suite": "real-smoke",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary_file": summary_path.as_posix(),
+        "overall_exit_code": overall_exit_code,
+        "contains_skip": contains_skip,
+        "modules": modules,
+        "output_artifact_present": output_artifact_present,
+        "output_artifact_count": output_artifact_count,
+        "failure_bucket": _infer_failure_bucket(
+            overall_exit_code=overall_exit_code,
+            output_artifact_present=output_artifact_present,
+            raw_output=raw_output,
+        ),
+        "provider_mode": _detect_provider_mode(),
+        "fallback_disabled": _detect_fallback_disabled(),
+    }
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    output_path = Path("output") / f"real_smoke_stability_record_{ts}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    latest_path = Path("output") / "real_smoke_stability_record_latest.json"
+    latest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return output_path
 
 
@@ -379,6 +485,7 @@ def main() -> int:
     )
     print(f"[stage-acceptance] summary_file={summary_path}")
 
+    artifact_dir: Path | None = None
     if any(item[0] in {"real-smoke", "real-acceptance"} for item in execution_plan):
         artifact_dir = _write_real_provider_artifacts(
             suite_arg=args.suite,
@@ -387,6 +494,14 @@ def main() -> int:
             suite_started_at=suite_started_at,
         )
         print(f"[stage-acceptance] real_provider_artifact_dir={artifact_dir}")
+
+    if args.suite == "real-smoke":
+        stability_record_path = _write_real_smoke_stability_record(
+            summary_path=summary_path,
+            suite_results=suite_results,
+            artifact_dir=artifact_dir,
+        )
+        print(f"[stage-acceptance] real_smoke_stability_record={stability_record_path}")
 
     return 0 if all(item["exit_code"] == 0 for item in suite_results) else 1
 
