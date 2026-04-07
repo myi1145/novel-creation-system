@@ -31,6 +31,22 @@ python scripts/runbook_checks.py --env prod --env-file .env --health-url http://
 
 若本次执行包含 stage acceptance，证据包会尝试关联最近一次 `output/stage_acceptance_summary_*.json` 路径，保证可追溯。
 
+执行完运行期证据包后，可继续沉淀人工放行记录（最小闭环）：
+
+```bash
+python scripts/release_signoff.py \
+  --decision approve \
+  --env prod \
+  --operator alice \
+  --reason "runbook passed, ready to release" \
+  --evidence-dir output/runbook_evidence/<timestamp>_prod
+```
+
+会输出到 `output/release_signoff/<timestamp>_<env>/`，至少包含：
+
+- `release_signoff.json`：结构化放行/拒绝/回退记录（可审计）。
+- `release_signoff.md`：人工复核视图（可签署留档）。
+
 ---
 
 ## 2. 上线前最小 checklist（人工可直接照抄）
@@ -104,7 +120,38 @@ python tests/run_stage_acceptance.py --suite real-acceptance
 
 ---
 
-## 4. 演练建议（最小）
+## 5. 放行记录与人工签署（最小口径）
+
+### 5.1 决策记录字段（最小集）
+
+放行记录最小字段统一为：
+
+- `generated_at` / `decided_at`
+- `env`（`real-provider` / `prod`）
+- `decision`（`approve` / `reject` / `rollback`）
+- `operator`
+- `reason` / `notes`
+- `linked_evidence_dir`
+- `linked_runbook_summary_json`
+- `linked_stage_acceptance_summary`
+- `required_checks_status`
+- `recommendation_source`（来自 `runbook_summary.json`）
+
+### 5.2 人工签署规则（必须遵守）
+
+1. `startup_blocked` 时，只能 `reject`，不允许 `approve`。
+2. `prod_release_blocked` 时，不允许 `approve prod`。
+3. 只有 `overall_result=passed` 时，才允许 `approve`。
+4. `rollback` 仅用于“已执行上线动作后的回退记录”，不得与 `reject` 混用。
+
+### 5.3 模板与入口
+
+- 模板：`md/status/release_signoff_template.md`
+- 命令入口：`scripts/release_signoff.py`
+
+---
+
+## 6. 演练建议（最小）
 
 ### 演练 1：preflight 失败路径
 
