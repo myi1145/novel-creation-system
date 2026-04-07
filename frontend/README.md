@@ -32,4 +32,7 @@ npm run build
 
 - Canon 初始化仅调用 `/canon/snapshots/init`。
 - Canon 的长期写入必须通过 ChangeSet 审批/应用链路（前端未绕过）。
-- Gate 与 ChangeSet 与 Publish 均通过后端现有接口执行。
+- 对象页已提供对象侧 `update / restore / retire` ChangeSet 提议入口，提议后在 ChangeSet 页审批。
+- 工作台蓝图候选选择在 `WorkbenchPage` 内完成，不新增后端聚合接口。
+- 题材页语义为“题材配置库管理（查看 + 导入）”，不伪装项目级题材切换。
+- ChangeSet 页在项目路由下按 `project_id` 前端过滤展示，并对缺少项目归属字段的记录做排除提示。
