@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ActionFailure, ActionSuccess, EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAsync } from '../features/useAsync';
@@ -226,6 +226,11 @@ export function ObjectsPage() {
             <button type="submit" disabled={!selectedObject || !projectId}>提交提议</button>
           </form>
           {feedback && <ActionSuccess text={feedback} />}
+          {feedback && projectId && (
+            <div className="panel">
+              <Link to={`/projects/${projectId}/changesets`}>前往 ChangeSet 页继续审批 / 应用</Link>
+            </div>
+          )}
           {errorFeedback && <ActionFailure text={errorFeedback} />}
         </div>
       </div>
