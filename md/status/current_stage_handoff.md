@@ -237,15 +237,19 @@
 
 ---
 
-## 6. 下一步唯一目标
+## 6. 本轮唯一目标（已完成）与下一步目标
 
-### 下一步唯一目标
+### 本轮唯一目标（已完成）
 
 **收口“放行台账索引与最新状态指针”最小版。**
 
 一句话解释：
 
 在 runbook 证据包与 release signoff 都已具备的前提下，下一刀只做“索引与指针收口”，把既有 `runbook_evidence / release_signoff / stage_acceptance_summary` 串成统一入口，让新窗口可以一眼定位最新放行结论与对应证据。
+
+### 下一步唯一目标（待新任务单定义）
+
+release registry 已完成后，下一步唯一目标应在新任务单中单独定义；本 handoff 不预设新功能扩展。
 
 ---
 
@@ -357,9 +361,9 @@ README 只负责：
 
 ---
 
-## 11. 当前推荐的任务下发模板
+## 11. 当前推荐的任务下发模板（下一目标版本）
 
-可直接复制后修改（已翻到当前目标：放行台账索引与最新状态指针收口）：
+可直接复制后修改（release registry 已完成，以下模板用于下一目标）：
 
 ```text
 任务类型：发布任务单
@@ -379,7 +383,7 @@ README 只负责：
 - 放行记录与人工签署入口（release_signoff）已完成
 
 本次唯一目标：
-- 收口“放行台账索引与最新状态指针（最小版）”
+- 在第 6 节填写新的唯一目标（不要重复 release registry 收口）
 
 不要做：
 - 不改 workflow 主链逻辑
@@ -398,10 +402,9 @@ README 只负责：
 
 验收标准：
 1. handoff 内存在明确“当前阶段状态结论”
-2. signoff 已从“下一步”翻入“已完成”
-3. 下一步唯一目标已翻到“台账索引 + 最新状态指针”
-4. 新窗口仅看 handoff 即可定位当前状态、阶段边界与下一步
-5. 不触碰业务逻辑
+2. handoff 第 6 节明确“本轮已完成目标 + 下一步唯一目标”
+3. 新窗口仅看 handoff 即可定位当前状态、阶段边界与下一步
+4. 不触碰 workflow 主链业务逻辑
 
 输出要求：
 1. 说明理解
@@ -414,7 +417,7 @@ README 只负责：
 
 ## 12. 本次任务结果（阶段基线状态）
 
-本轮任务基线登记：
+本轮任务基线登记（已更新）：
 
 已完成项（延续既有结论）：
 
@@ -423,7 +426,14 @@ README 只负责：
 - 结果语义统一：`passed / startup_blocked / prod_release_blocked`。
 - 证据包关联：runbook 文档入口 + 最近 stage acceptance summary 路径（若存在）。
 - 放行记录与人工签署入口（`release_signoff`）已完成并可留档。
+- release signoff 成功后自动刷新放行台账索引目录：`output/release_registry/`。
+- 最小台账与指针文件已具备：
+  - `release_index.json`
+  - `latest_prod_signoff.json`
+  - `latest_real_provider_signoff.json`
+  - `latest_runbook_evidence.json`
+- `release_index.json` 已可串联 signoff / runbook evidence / stage acceptance summary。
 
-下一刀（当前唯一目标）：
+下一刀（新的唯一目标，待定义）：
 
-- 收口“放行台账索引与最新状态指针”最小版（仅做索引与指针，不新增主功能）。
+- 在下一轮发布任务单中定义（不再重复 release registry 收口任务）。
