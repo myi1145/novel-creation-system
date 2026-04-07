@@ -16,6 +16,12 @@ export const api = {
   listObjects: (resource: string, projectId: string) => http.get<CreativeObject[]>(`/objects/${resource}?project_id=${projectId}`),
   objectHistory: (resource: string, projectId: string, logicalObjectId: string) =>
     http.get<CreativeObject[]>(`/objects/${resource}/history?project_id=${projectId}&logical_object_id=${logicalObjectId}`),
+  proposeObjectUpdate: (resource: string, logicalObjectId: string, payload: Dict) =>
+    http.post<ChangeSet>(`/objects/${resource}/${logicalObjectId}/changesets/update`, payload),
+  proposeObjectRestore: (resource: string, logicalObjectId: string, payload: Dict) =>
+    http.post<ChangeSet>(`/objects/${resource}/${logicalObjectId}/changesets/restore`, payload),
+  proposeObjectRetire: (resource: string, logicalObjectId: string, payload: Dict) =>
+    http.post<ChangeSet>(`/objects/${resource}/${logicalObjectId}/changesets/retire`, payload),
 
   createGoal: (payload: Dict) => http.post<ChapterGoal>('/chapters/goals', payload),
   generateBlueprints: (payload: Dict) => http.post<ChapterBlueprint[]>('/chapters/blueprints/generate', payload),
