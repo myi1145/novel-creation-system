@@ -335,6 +335,19 @@ python scripts/runbook_checks.py --env prod --env-file .env --health-url http://
 
 运行完成后会自动输出运行期验收证据包到 `output/runbook_evidence/<timestamp>_<env>/`，至少包含 `runbook_summary.json` 与 `runbook_summary.md`，用于人工复核、放行记录与失败审计。
 
+完成证据包后，可用最小签署入口沉淀人工决策记录（approve / reject / rollback）：
+
+```bash
+python scripts/release_signoff.py \
+  --decision approve \
+  --env prod \
+  --operator alice \
+  --reason "runbook passed, approve release" \
+  --evidence-dir output/runbook_evidence/<timestamp>_prod
+```
+
+记录会输出到 `output/release_signoff/<timestamp>_<env>/`，包含 `release_signoff.json` 与 `release_signoff.md`。
+
 入口阻断语义：
 
 - preflight / migration / health 失败：禁止启动或禁止继续放行；

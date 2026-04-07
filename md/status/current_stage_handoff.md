@@ -224,12 +224,12 @@
 
 ### 下一步唯一目标
 
-**收口“运行期验收证据包”最小闭环。**
+**收口“放行记录与人工签署口径”最小闭环。**
 
 一句话解释：
 
-运行手册与演练入口已具备后，下一刀应把重点放在“执行结果可归档、可下载、可人工签字复核”的证据包沉淀，
-避免结果只停留在 stdout / exit code。
+运行期证据包已具备后，下一刀应把重点放在“谁基于哪份证据做了什么决策”的最小可追溯记录，
+避免放行/拒绝/回退决策只停留在口头或聊天记录。
 
 ---
 
@@ -237,13 +237,13 @@
 
 ### 任务名称
 
-**运行期验收证据包收口（最小版）**
+**放行记录与人工签署口径收口（最小版）**
 
 ### 本次只做什么
 
-- 为 runbook 执行结果自动导出证据包（JSON + Markdown）
-- 固化“禁止启动 / 禁止 prod 放行 / 失败步骤 / 推荐动作”的结构化表达
-- 关联 stage acceptance summary 与 runbook 文档入口，保证可追溯
+- 增加最小 signoff 入口，沉淀 `approve / reject / rollback` 决策记录
+- 固化人工签署口径（startup_blocked / prod_release_blocked / passed 三类约束）
+- 输出 `release_signoff.json` + `release_signoff.md` 并关联 runbook 证据包
 
 ### 本次不要做什么
 
@@ -336,7 +336,7 @@ README 只负责：
 
 ## 11. 当前推荐的任务下发模板
 
-可直接复制后修改（已翻到当前目标：运行期验收证据包）：
+可直接复制后修改（已翻到当前目标：放行记录与人工签署口径）：
 
 ```text
 任务类型：发布任务单
@@ -351,7 +351,7 @@ README 只负责：
 - real-provider 验收工件归属防串档已完成
 
 本次唯一目标：
-- 收口“运行期验收证据包”，让 runbook 执行后自动沉淀结构化结果
+- 收口“放行记录与人工签署口径”，让 runbook 证据后有统一决策记录
 
 不要做：
 - 不改 workflow 主链逻辑
@@ -359,26 +359,29 @@ README 只负责：
 - 不改 provider gateway 核心业务逻辑
 - 不改 Alembic 迁移本体
 - 不做容器化/监控/权限系统
-- 不重写 runbook 大逻辑
+- 不扩业务功能
+- 不重写 runbook 主逻辑
 
 重点改动对象：
-- scripts/runbook_checks.py
+- scripts/runbook_checks.py（如需挂接放行记录）
+- scripts/release_signoff.py（可新增）
 - md/status/runbook_real_provider_prod.md
 - md/status/current_stage_handoff.md
 - README.md（如需最小补充入口）
-- tests/test_runtime_runbook.py（扩展）或 tests/test_runbook_evidence.py（新增）
+- tests/test_release_signoff.py（新增）
+- md/status/release_signoff_template.md（可新增）
 
 验收标准：
-- scripts/runbook_checks.py 执行后会产生结构化证据包
-- 证据包至少包含 runbook_summary.json 与 runbook_summary.md
-- JSON 可明确表达通过/启动阻断/prod 放行阻断与失败步骤
-- Markdown 可让人工快速复核并定位下一步动作
-- 如执行 stage acceptance，证据包可看到关联 summary 路径或引用
+- 存在最小可执行的放行记录入口
+- 可输出 `release_signoff.json` 与 `release_signoff.md`
+- 可基于 `runbook_summary.json` 的 `overall_result` 做最小规则约束
+- 记录可追溯 operator/decision/evidence/reason
+- README / runbook / handoff 可找到入口
 
 输出要求：
 1. 说明理解
 2. 给出最小改动方案
-3. 实现证据包导出
+3. 实现 signoff 入口与记录文件
 4. 补测试
 5. 更新 README / runbook / handoff
 6. 最后列出改动文件、测试命令、结果
@@ -387,17 +390,15 @@ README 只负责：
 
 ## 12. 本次任务结果（阶段基线状态）
 
-本轮任务已完成以下收口项：
+本轮任务基线登记：
+
+已完成项（延续既有结论）：
 
 - runbook 执行后自动沉淀证据包目录：`output/runbook_evidence/<timestamp>_<env>/`。
 - 证据包最小内容：`runbook_summary.json` + `runbook_summary.md`。
 - 结果语义统一：`passed / startup_blocked / prod_release_blocked`。
 - 证据包关联：runbook 文档入口 + 最近 stage acceptance summary 路径（若存在）。
 
-最小验证口径（本轮已验证）：
+下一刀（当前唯一目标）：
 
-- `tests/test_runtime_runbook.py` 或新增 `tests/test_runbook_evidence.py` 至少覆盖：
-  - 全部通过时生成 evidence；
-  - preflight 失败标记 `startup_blocked`；
-  - stage acceptance 失败标记 `prod_release_blocked`；
-  - JSON/MD 文件存在且字段完整。
+- 收口“放行记录与人工签署口径”最小闭环。
