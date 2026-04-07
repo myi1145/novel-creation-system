@@ -13,6 +13,14 @@ from pathlib import Path
 from typing import Any
 
 CURRENT_SEQUENCE_ARTIFACT_MANIFEST = Path("output") / "current_real_provider_sequence_artifact.json"
+REAL_SMOKE_REQUIRED_FILES_FALLBACK = (
+    "stage_acceptance_summary.json",
+    "agent_calls_summary.json",
+    "provider_governance_snapshot.json",
+    "diagnostics_overview.json",
+    "failure_summary.json",
+    "failure_summary.md",
+)
 
 CORE_TESTS = [
     "tests.test_workflow_revision_effectiveness",
@@ -118,20 +126,26 @@ def _detect_fallback_disabled() -> bool:
     return fallback == "false"
 
 
+def _load_real_smoke_required_files() -> list[str]:
+    try:
+        from tests.validate_real_smoke_artifacts import REQUIRED_FILES
+
+        return [str(item) for item in REQUIRED_FILES]
+    except Exception:  # noqa: BLE001
+        return list(REAL_SMOKE_REQUIRED_FILES_FALLBACK)
+
+
 def _count_real_smoke_required_artifacts(artifact_dir: Path | None) -> tuple[bool, int]:
     if artifact_dir is None:
         return False, 0
 
-    try:
-        from tests.validate_real_smoke_artifacts import REQUIRED_FILES
-    except Exception:  # noqa: BLE001
-        REQUIRED_FILES = []
+    required_files = _load_real_smoke_required_files()
 
     count = 0
-    for file_name in REQUIRED_FILES:
+    for file_name in required_files:
         if (artifact_dir / file_name).exists():
             count += 1
-    return bool(REQUIRED_FILES) and count == len(REQUIRED_FILES), count
+    return bool(required_files) and count == len(required_files), count
 
 
 def _infer_failure_bucket(*, overall_exit_code: int, output_artifact_present: bool, raw_output: str) -> str:
