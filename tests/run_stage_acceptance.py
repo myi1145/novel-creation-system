@@ -225,6 +225,131 @@ def _write_real_smoke_stability_record(
     return output_path
 
 
+def _parse_generated_at(value: Any) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _collect_real_smoke_stability_records(output_dir: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for path in output_dir.glob("real_smoke_stability_record_*.json"):
+        if path.name == "real_smoke_stability_record_latest.json":
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        payload["_record_file"] = path.as_posix()
+        records.append(payload)
+    return sorted(records, key=lambda item: _parse_generated_at(item.get("generated_at")))
+
+
+def _write_real_smoke_stability_ledger(*, output_dir: Path) -> tuple[Path, Path]:
+    records = _collect_real_smoke_stability_records(output_dir)
+    record_count = len(records)
+    pass_count = sum(1 for item in records if str(item.get("failure_bucket")) == "passed")
+    fail_count = record_count - pass_count
+    pass_rate = round(pass_count / record_count, 4) if record_count else 0.0
+
+    latest_success_at = None
+    latest_failure_at = None
+    consecutive_failure_count = 0
+    failure_bucket_breakdown: dict[str, int] = {}
+
+    for item in records:
+        bucket = str(item.get("failure_bucket") or "unknown_failure")
+        failure_bucket_breakdown[bucket] = failure_bucket_breakdown.get(bucket, 0) + 1
+
+    for item in reversed(records):
+        if str(item.get("failure_bucket")) == "passed":
+            latest_success_at = item.get("generated_at")
+            break
+    for item in reversed(records):
+        if str(item.get("failure_bucket")) != "passed":
+            latest_failure_at = item.get("generated_at")
+            break
+    for item in reversed(records):
+        if str(item.get("failure_bucket")) == "passed":
+            break
+        consecutive_failure_count += 1
+
+    compact_records = [
+        {
+            "generated_at": item.get("generated_at"),
+            "record_file": item.get("_record_file"),
+            "summary_file": item.get("summary_file"),
+            "overall_exit_code": item.get("overall_exit_code"),
+            "failure_bucket": item.get("failure_bucket"),
+            "output_artifact_present": item.get("output_artifact_present"),
+            "output_artifact_count": item.get("output_artifact_count"),
+            "provider_mode": item.get("provider_mode"),
+            "fallback_disabled": item.get("fallback_disabled"),
+        }
+        for item in records
+    ]
+
+    ledger = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source_pattern": "output/real_smoke_stability_record_*.json",
+        "record_count": record_count,
+        "records": compact_records,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "pass_rate": pass_rate,
+        "latest_success_at": latest_success_at,
+        "latest_failure_at": latest_failure_at,
+        "consecutive_failure_count": consecutive_failure_count,
+        "failure_bucket_breakdown": failure_bucket_breakdown,
+    }
+
+    latest_lines = [
+        "# real-smoke stability latest",
+        "",
+        f"- sample_count: {record_count}",
+        f"- pass_count: {pass_count}",
+        f"- fail_count: {fail_count}",
+        f"- pass_rate: {pass_rate}",
+        f"- latest_success_at: {latest_success_at or 'none'}",
+        f"- latest_failure_at: {latest_failure_at or 'none'}",
+        f"- consecutive_failure_count: {consecutive_failure_count}",
+        "",
+        "## failure_bucket_breakdown",
+    ]
+    if failure_bucket_breakdown:
+        latest_lines.extend([f"- {bucket}: {count}" for bucket, count in sorted(failure_bucket_breakdown.items())])
+    else:
+        latest_lines.append("- none")
+    latest_lines.extend(["", "## latest_records"])
+    if compact_records:
+        for item in list(reversed(compact_records))[:5]:
+            latest_lines.append(
+                "- {generated_at} | bucket={failure_bucket} | artifact_present={output_artifact_present} | count={output_artifact_count}".format(
+                    generated_at=item.get("generated_at") or "unknown",
+                    failure_bucket=item.get("failure_bucket") or "unknown",
+                    output_artifact_present=item.get("output_artifact_present"),
+                    output_artifact_count=item.get("output_artifact_count"),
+                )
+            )
+    else:
+        latest_lines.append("- none")
+    latest_lines.append("")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = output_dir / "real_smoke_stability_ledger.json"
+    latest_path = output_dir / "real_smoke_stability_latest.md"
+    ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
+    latest_path.write_text("\n".join(latest_lines), encoding="utf-8")
+    return ledger_path, latest_path
+
+
 def _classify_agent_call_failures(agent_calls: list[dict[str, Any]]) -> dict[str, int]:
     stats = {
         "provider_call_failures": 0,
@@ -516,6 +641,9 @@ def main() -> int:
             artifact_dir=artifact_dir,
         )
         print(f"[stage-acceptance] real_smoke_stability_record={stability_record_path}")
+        ledger_path, latest_path = _write_real_smoke_stability_ledger(output_dir=Path("output"))
+        print(f"[stage-acceptance] real_smoke_stability_ledger={ledger_path}")
+        print(f"[stage-acceptance] real_smoke_stability_latest={latest_path}")
 
     return 0 if all(item["exit_code"] == 0 for item in suite_results) else 1
 

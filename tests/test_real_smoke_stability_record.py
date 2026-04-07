@@ -110,6 +110,8 @@ class RealSmokeStabilityRecordTest(unittest.TestCase):
                 self.assertEqual(stability_payload["summary_file"], summary_files[0].as_posix())
                 self.assertEqual(stability_payload["output_artifact_count"], len(REQUIRED_FILES))
                 self.assertEqual(stability_payload["failure_bucket"], "passed")
+                self.assertTrue((Path("output") / "real_smoke_stability_ledger.json").exists())
+                self.assertTrue((Path("output") / "real_smoke_stability_latest.md").exists())
             finally:
                 os.chdir(cwd)
 
