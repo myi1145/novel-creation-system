@@ -1,0 +1,16 @@
+:root { font-family: Inter, system-ui, Arial, sans-serif; color: #1f2937; background: #f9fafb; }
+body { margin: 0; }
+#root { padding: 16px; }
+.panel { border: 1px solid #d1d5db; padding: 12px; border-radius: 8px; margin: 8px 0; background: white; }
+.state { padding: 10px; border-radius: 6px; margin: 8px 0; }
+.loading { background: #eff6ff; }
+.empty { background: #f3f4f6; }
+.error, .action-fail { background: #fef2f2; color: #991b1b; }
+.blocked { background: #fff7ed; }
+.pending { background: #fffbeb; }
+.success { background: #ecfdf5; color: #065f46; }
+.project-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.project-nav a { padding: 6px 10px; background: #e5e7eb; border-radius: 6px; text-decoration: none; color: inherit; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+input, textarea, button { margin: 4px; padding: 6px; }
+pre { overflow: auto; max-height: 280px; }
