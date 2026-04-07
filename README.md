@@ -346,7 +346,7 @@ python scripts/release_signoff.py \
   --evidence-dir output/runbook_evidence/<timestamp>_prod
 ```
 
-记录会输出到 `output/release_signoff/<timestamp>_<env>/`，包含 `release_signoff.json` 与 `release_signoff.md`。
+记录会输出到 `output/release_signoff/<timestamp>_<env>/`，包含 `release_signoff.json` 与 `release_signoff.md`；并会自动刷新 `output/release_registry/` 下的 release index 与 latest pointers。
 
 入口阻断语义：
 

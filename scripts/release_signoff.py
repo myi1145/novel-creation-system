@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from scripts.release_registry import update_release_registry
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -72,7 +74,7 @@ def create_signoff_record(
 
     generated_at = _utc_now_iso()
     decided_at_value = decided_at or generated_at
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     signoff_dir = Path("output") / "release_signoff" / f"{ts}_{env}"
     signoff_dir.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +133,7 @@ def create_signoff_record(
         ]
     )
     (signoff_dir / "release_signoff.md").write_text(md_content, encoding="utf-8")
+    update_release_registry()
     return signoff_dir
 
 
