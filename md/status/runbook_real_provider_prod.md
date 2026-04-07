@@ -20,6 +20,11 @@ python scripts/runbook_checks.py --env prod --env-file .env --health-url http://
 3. 健康检查（可选）
 4. 阶段验收（默认 `real-smoke`）
 
+统一命令口径：
+
+- Alembic 统一使用：`alembic upgrade head`。
+- 发布入口统一顺序：`preflight -> alembic -> runbook_checks -> release_signoff -> release_registry`。
+
 执行完成后会自动导出证据包到：
 
 `output/runbook_evidence/<timestamp>_<env>/`
@@ -46,6 +51,13 @@ python scripts/release_signoff.py \
 
 - `release_signoff.json`：结构化放行/拒绝/回退记录（可审计）。
 - `release_signoff.md`：人工复核视图（可签署留档）。
+
+`release_signoff` 完成后会自动刷新：
+
+- `output/release_registry/release_index.json`
+- `output/release_registry/latest_prod_signoff.json`
+- `output/release_registry/latest_real_provider_signoff.json`
+- `output/release_registry/latest_runbook_evidence.json`
 
 ---
 

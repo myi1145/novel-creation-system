@@ -47,8 +47,10 @@ def _build_latest_status_summary(entry: dict[str, Any]) -> str:
     decision = entry.get("decision", "unknown")
     overall_result = entry.get("overall_result", "unknown")
     env = entry.get("env", "unknown")
+    recommended_action = entry.get("recommended_action", "")
     return (
         f"latest {env} signoff decision={decision}, overall_result={overall_result}; "
+        f"recommended_action={recommended_action or 'n/a'}; "
         "请先查看 signoff_dir，再追溯 linked_evidence_dir。"
     )
 
@@ -96,8 +98,13 @@ def update_release_registry(*, output_root: Path = Path("output"), max_entries: 
             "latest_real_provider_signoff": _build_pointer(latest_real_provider) if latest_real_provider else None,
             "latest_runbook_evidence": {
                 "linked_evidence_dir": latest_runbook_evidence.get("linked_evidence_dir", ""),
+                "linked_runbook_summary_json": latest_runbook_evidence.get("linked_runbook_summary_json", ""),
+                "linked_stage_acceptance_summary": latest_runbook_evidence.get("linked_stage_acceptance_summary", ""),
                 "signoff_dir": latest_runbook_evidence.get("signoff_dir", ""),
                 "decided_at": latest_runbook_evidence.get("decided_at", ""),
+                "overall_result": latest_runbook_evidence.get("overall_result", ""),
+                "recommended_action": latest_runbook_evidence.get("recommended_action", ""),
+                "latest_status_summary": _build_latest_status_summary(latest_runbook_evidence),
             }
             if latest_runbook_evidence
             else None,
@@ -124,9 +131,13 @@ def update_release_registry(*, output_root: Path = Path("output"), max_entries: 
             latest_runbook_path,
             {
                 "linked_evidence_dir": latest_runbook_evidence.get("linked_evidence_dir", ""),
+                "linked_runbook_summary_json": latest_runbook_evidence.get("linked_runbook_summary_json", ""),
+                "linked_stage_acceptance_summary": latest_runbook_evidence.get("linked_stage_acceptance_summary", ""),
                 "signoff_dir": latest_runbook_evidence.get("signoff_dir", ""),
                 "decided_at": latest_runbook_evidence.get("decided_at", ""),
-                "latest_status_summary": "最新可追溯证据入口，优先查看 linked_evidence_dir 下 runbook_summary。",
+                "overall_result": latest_runbook_evidence.get("overall_result", ""),
+                "recommended_action": latest_runbook_evidence.get("recommended_action", ""),
+                "latest_status_summary": _build_latest_status_summary(latest_runbook_evidence),
             },
         )
     elif latest_runbook_path.exists():
