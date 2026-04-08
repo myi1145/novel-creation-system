@@ -15,6 +15,7 @@ export function ProjectNav() {
   if (!projectId) return null;
   return (
     <nav className="project-nav">
+      <Link to="/projects">返回项目列表</Link>
       {tabs.map(([path, label]) => (
         <Link key={path} to={`/projects/${projectId}/${path}`}>{label}</Link>
       ))}
