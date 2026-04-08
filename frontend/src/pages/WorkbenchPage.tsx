@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, PendingApprovalState } from '../components/Status';
 import type { ChapterBlueprint } from '../types/domain';
 
@@ -29,6 +30,21 @@ type LastDraftPayload = {
   summary: string;
 };
 
+type CachedChapterState = {
+  chapterNo?: number;
+  goalId?: string;
+  blueprintId?: string;
+  sceneIds?: string[];
+  draftId?: string;
+  blueprintCandidates?: ChapterBlueprint[];
+  lastScenesPayload?: LastScenesPayload | null;
+  lastDraftPayload?: LastDraftPayload | null;
+  lastRevisedDraftPayload?: LastDraftPayload | null;
+  lastAction?: string;
+  lastActionResultSummary?: string;
+  lastActionError?: string;
+};
+
 export function WorkbenchPage() {
   const { projectId = '' } = useParams();
   const [chapterNo, setChapterNo] = useState(1);
@@ -50,6 +66,8 @@ export function WorkbenchPage() {
   const [lastScenesPayload, setLastScenesPayload] = useState<LastScenesPayload | null>(null);
   const [lastDraftPayload, setLastDraftPayload] = useState<LastDraftPayload | null>(null);
   const [lastRevisedDraftPayload, setLastRevisedDraftPayload] = useState<LastDraftPayload | null>(null);
+  const [chapterExistsHint, setChapterExistsHint] = useState('');
+  const [isRehydratingChapter, setIsRehydratingChapter] = useState(false);
 
   const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
   const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
@@ -74,33 +92,8 @@ export function WorkbenchPage() {
     const raw = window.localStorage.getItem(chapterStorageKey);
     if (!raw) return;
     try {
-      const cached = JSON.parse(raw) as {
-        chapterNo?: number;
-        goalId?: string;
-        blueprintId?: string;
-        sceneIds?: string[];
-        draftId?: string;
-        blueprintCandidates?: ChapterBlueprint[];
-        lastScenesPayload?: LastScenesPayload | null;
-        lastDraftPayload?: LastDraftPayload | null;
-        lastRevisedDraftPayload?: LastDraftPayload | null;
-        lastAction?: string;
-        lastActionResultSummary?: string;
-        lastActionError?: string;
-      };
-      setGoalId(cached.goalId || '');
-      setBlueprintId(cached.blueprintId || '');
-      setSceneIds(Array.isArray(cached.sceneIds) ? cached.sceneIds : []);
-      setDraftId(cached.draftId || '');
-      const cachedBlueprints = Array.isArray(cached.blueprintCandidates) ? cached.blueprintCandidates : [];
-      setBlueprintCandidates(cachedBlueprints);
-      setBlueprintSource(cachedBlueprints.length > 0 ? 'cache' : 'none');
-      setLastScenesPayload(cached.lastScenesPayload || null);
-      setLastDraftPayload(cached.lastDraftPayload || null);
-      setLastRevisedDraftPayload(cached.lastRevisedDraftPayload || null);
-      setLastAction(cached.lastAction || '');
-      setLastActionResultSummary(cached.lastActionResultSummary || '');
-      setLastActionError(cached.lastActionError || '');
+      const cached = JSON.parse(raw) as CachedChapterState;
+      hydrateFromCache(cached);
       setFeedback(cached.lastActionResultSummary ? '已恢复当前章本地缓存状态' : '');
       setError('');
     } catch {
@@ -162,6 +155,7 @@ export function WorkbenchPage() {
     setFeedback('');
     setError('');
     setLastActionError('');
+    setChapterExistsHint('');
     try {
       const data = await action();
       setStateDump((s) => ({ ...s, last_result: data }));
@@ -171,8 +165,71 @@ export function WorkbenchPage() {
     }
   };
 
-  const createGoal = () =>
-    run(async () => {
+  const hydrateFromCache = (cached: CachedChapterState) => {
+    setGoalId(cached.goalId || '');
+    setBlueprintId(cached.blueprintId || '');
+    setSceneIds(Array.isArray(cached.sceneIds) ? cached.sceneIds : []);
+    setDraftId(cached.draftId || '');
+    const cachedBlueprints = Array.isArray(cached.blueprintCandidates) ? cached.blueprintCandidates : [];
+    setBlueprintCandidates(cachedBlueprints);
+    setBlueprintSource(cachedBlueprints.length > 0 ? 'cache' : 'none');
+    setLastScenesPayload(cached.lastScenesPayload || null);
+    setLastDraftPayload(cached.lastDraftPayload || null);
+    setLastRevisedDraftPayload(cached.lastRevisedDraftPayload || null);
+    setLastAction(cached.lastAction || '');
+    setLastActionResultSummary(cached.lastActionResultSummary || '');
+    setLastActionError(cached.lastActionError || '');
+  };
+
+  const restoreCurrentChapter = async (trigger: 'manual' | 'auto') => {
+    if (!projectId) return;
+    setError('');
+    setIsRehydratingChapter(true);
+    try {
+      let hasCache = false;
+      let restoredGoalId = '';
+      try {
+        const raw = window.localStorage.getItem(chapterStorageKey);
+        if (raw) {
+          const cached = JSON.parse(raw) as CachedChapterState;
+          hasCache = Boolean(cached.goalId || cached.blueprintId || cached.draftId || (cached.sceneIds || []).length > 0);
+          if (hasCache) {
+            hydrateFromCache(cached);
+            restoredGoalId = cached.goalId || '';
+          }
+        }
+      } catch {
+        // ignore cache parse failure; keep trying api read.
+      }
+      if (restoredGoalId) {
+        try {
+          const items = await api.listBlueprints(projectId, restoredGoalId);
+          if (items.length > 0) {
+            setBlueprintCandidates(items);
+            setBlueprintSource('api');
+            const selected = items.find((item) => Boolean(item.selected));
+            if (selected) setBlueprintId(selected.id);
+          }
+        } catch {
+          // fallback to cache-only restore
+        }
+      }
+      if (hasCache) {
+        setFeedback(trigger === 'auto' ? `当前第 ${chapterNo} 章目标已存在，已恢复当前章缓存并尝试回读蓝图` : `已恢复第 ${chapterNo} 章已有内容（缓存优先）`);
+      } else {
+        setFeedback(`未找到第 ${chapterNo} 章本地缓存。可先执行“创建目标”或从已知 goal_id 继续。`);
+      }
+    } finally {
+      setIsRehydratingChapter(false);
+    }
+  };
+
+  const createGoal = async () => {
+    setFeedback('');
+    setError('');
+    setLastActionError('');
+    setChapterExistsHint('');
+    try {
       const g = await api.createGoal({
         project_id: projectId,
         chapter_no: chapterNo,
@@ -182,8 +239,18 @@ export function WorkbenchPage() {
       setGoalId(g.id);
       setBlueprintId('');
       setBlueprintCandidates([]);
-      return g;
-    }, '章节目标已创建');
+      setStateDump((s) => ({ ...s, last_result: g }));
+      setFeedback('章节目标已创建');
+    } catch (e) {
+      const isConflict = e instanceof ApiError && e.status === 409;
+      if (!isConflict) {
+        setError(e instanceof Error ? e.message : '执行失败');
+        return;
+      }
+      setChapterExistsHint(`当前第 ${chapterNo} 章目标已存在，不能重复创建。`);
+      await restoreCurrentChapter('auto');
+    }
+  };
 
   const genBlueprint = () =>
     run(async () => {
@@ -323,7 +390,10 @@ export function WorkbenchPage() {
           章节号
           <input type="number" value={chapterNo} onChange={(e) => setChapterNo(Number(e.target.value))} />
         </label>
-        <button onClick={createGoal}>1) 创建目标</button>
+        <button onClick={() => void createGoal()}>1) 创建目标</button>
+        <button onClick={() => void restoreCurrentChapter('manual')} disabled={isRehydratingChapter}>
+          {isRehydratingChapter ? '读取当前章已有内容中…' : '读取当前章已有内容'}
+        </button>
         <button onClick={genBlueprint} disabled={!goalId}>
           2) 生成蓝图候选
         </button>
@@ -340,6 +410,18 @@ export function WorkbenchPage() {
         <button onClick={reviseDraft} disabled={!draftId || isRevisingDraft}>
           {isRevisingDraft ? '6) 草稿修订执行中…' : '6) 草稿修订'}
         </button>
+      </div>
+
+      <div className="panel">
+        <h3>已有章节提示</h3>
+        {chapterExistsHint ? (
+          <div>
+            <div>{chapterExistsHint}</div>
+            <div>这不是系统故障，可直接读取并继续当前章流程。</div>
+          </div>
+        ) : (
+          <EmptyState text="当前章暂无“已存在目标”冲突提示" />
+        )}
       </div>
 
       <div className="panel">
