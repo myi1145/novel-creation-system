@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 
 const tabs = [
+  ['overview', '项目概览'],
   ['genres', '题材装载'],
   ['canon', 'Canon 快照'],
   ['objects', '对象库'],

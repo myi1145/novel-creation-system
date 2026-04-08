@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, LoadingState } from '../components/Status';
 import { toActionErrorMessage } from '../utils/actionError';
+import { mergeProjectChainState } from '../features/projectState';
 
 export function ChangesetsPage() {
   const { projectId = '' } = useParams();
@@ -54,6 +55,11 @@ export function ChangesetsPage() {
   };
 
   const scoped = useMemo(() => items.filter((cs) => String(cs.project_id || '') === projectId), [items, projectId]);
+
+  useEffect(() => {
+    const hasPending = scoped.some((cs) => String(cs.status || '').toLowerCase().includes('pending'));
+    mergeProjectChainState(projectId, { hasPendingChangeset: hasPending });
+  }, [projectId, scoped]);
   const unknownProjectItems = useMemo(() => items.filter((cs) => !cs.project_id), [items]);
 
   return (
@@ -185,6 +191,16 @@ export function ChangesetsPage() {
           </li>
         ))}
       </ul>
+
+
+      <div className="panel">
+        <div className="project-nav">
+          <Link to={`/projects/${projectId}/objects`}>回对象页</Link>
+          <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
+          <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
+        </div>
+      </div>
     </div>
   );
 }

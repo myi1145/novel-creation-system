@@ -20,6 +20,7 @@ npm run build
 ## 路由
 
 - `/projects`
+- `/projects/:projectId/overview`
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
@@ -27,6 +28,7 @@ npm run build
 - `/projects/:projectId/gates`
 - `/projects/:projectId/changesets`
 - `/projects/:projectId/published`
+- `/projects/:projectId/workflows`
 
 ## 说明
 

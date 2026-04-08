@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { mergeProjectChainState } from '../features/projectState';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, BlockedState } from '../components/Status';
@@ -41,6 +42,7 @@ export function GatesPage() {
       });
       window.localStorage.setItem(lastDraftStorageKey, sanitizedDraftId);
       setResult(data as Record<string, unknown>);
+      mergeProjectChainState(projectId, { draftId: sanitizedDraftId });
       setFeedback('Gate 审查完成');
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
@@ -62,7 +64,7 @@ export function GatesPage() {
     </div>
     {isRunningGate && <ActionSuccess text="正在执行 Gate 审查，请稍候..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <p><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link></p>
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link><Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
     <pre className="panel">{JSON.stringify(result, null, 2)}</pre>
   </div>;
 }

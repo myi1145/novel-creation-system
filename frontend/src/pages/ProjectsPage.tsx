@@ -55,7 +55,7 @@ export function ProjectsPage() {
           <li key={p.id} className="panel">
             <strong>{p.project_name}</strong>（chapter_no={p.current_chapter_no}）
             <p>{p.premise}</p>
-            <button onClick={() => { setProjectId(p.id); navigate(`/projects/${p.id}/genres`); }}>进入项目</button>
+            <button onClick={() => { setProjectId(p.id); navigate(`/projects/${p.id}/overview`); }}>进入项目</button>
             <Link to={`/projects/${p.id}/workbench`}>直达工作台</Link>
           </li>
         ))}
