@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { ActionFailure, ActionSuccess, EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAsync } from '../features/useAsync';
 import type { Dict } from '../types/api';
+import type { CreativeObject } from '../types/domain';
 
 const OBJECT_TYPES = ['characters', 'rules', 'open-loops', 'relationships'] as const;
 
@@ -20,6 +21,16 @@ interface ProposalFormState {
   retire_reason: string;
 }
 
+interface CreateFormState {
+  character_name: string;
+  rule_name: string;
+  description: string;
+  loop_name: string;
+  source_character_id: string;
+  target_character_id: string;
+  relation_type: string;
+}
+
 const DEFAULT_FORM: ProposalFormState = {
   rationale: '对象修正提议',
   source_ref: 'frontend_objects_page',
@@ -28,6 +39,16 @@ const DEFAULT_FORM: ProposalFormState = {
   restore_mode: 'version_no',
   restore_value: '1',
   retire_reason: '',
+};
+
+const DEFAULT_CREATE_FORM: CreateFormState = {
+  character_name: '',
+  rule_name: '',
+  description: '',
+  loop_name: '',
+  source_character_id: '',
+  target_character_id: '',
+  relation_type: '',
 };
 
 const UPDATE_FIELD_HINT: Record<ObjectResource, string> = {
@@ -43,6 +64,15 @@ export function ObjectsPage() {
   const [selectedId, setSelectedId] = useState('');
   const [proposalAction, setProposalAction] = useState<ProposalAction>('update');
   const [proposalForm, setProposalForm] = useState<ProposalFormState>(DEFAULT_FORM);
+  const [createForm, setCreateForm] = useState<CreateFormState>(DEFAULT_CREATE_FORM);
+  const [createdObjectsByResource, setCreatedObjectsByResource] = useState<Record<ObjectResource, CreativeObject[]>>({
+    characters: [],
+    rules: [],
+    'open-loops': [],
+    relationships: [],
+  });
+  const [createFeedback, setCreateFeedback] = useState('');
+  const [createErrorFeedback, setCreateErrorFeedback] = useState('');
   const [feedback, setFeedback] = useState('');
   const [errorFeedback, setErrorFeedback] = useState('');
 
@@ -54,12 +84,83 @@ export function ObjectsPage() {
     setSelectedId('');
     setFeedback('');
     setErrorFeedback('');
+    setCreateFeedback('');
+    setCreateErrorFeedback('');
   }, [resource, projectId]);
 
+  const visibleObjects = useMemo(() => {
+    const remoteObjects = listState.data || [];
+    const localObjects = createdObjectsByResource[resource] || [];
+    const merged = [...remoteObjects];
+    localObjects.forEach((item) => {
+      if (!merged.some((remoteItem) => remoteItem.id === item.id)) {
+        merged.push(item);
+      }
+    });
+    return merged;
+  }, [createdObjectsByResource, listState.data, resource]);
+
   const selectedObject = useMemo(
-    () => listState.data?.find((item) => String(item.logical_object_id || '') === selectedId),
-    [listState.data, selectedId],
+    () => visibleObjects.find((item) => String(item.logical_object_id || '') === selectedId),
+    [visibleObjects, selectedId],
   );
+
+  const buildCreatePayload = (): Dict => {
+    const basePayload = {
+      project_id: projectId,
+      source_ref: 'frontend_objects_page',
+    };
+    if (resource === 'characters') {
+      return { ...basePayload, character_name: createForm.character_name.trim() };
+    }
+    if (resource === 'rules') {
+      return {
+        ...basePayload,
+        rule_name: createForm.rule_name.trim(),
+        description: createForm.description.trim(),
+      };
+    }
+    if (resource === 'open-loops') {
+      return { ...basePayload, loop_name: createForm.loop_name.trim() };
+    }
+    return {
+      ...basePayload,
+      source_character_id: createForm.source_character_id.trim(),
+      target_character_id: createForm.target_character_id.trim(),
+      relation_type: createForm.relation_type.trim(),
+    };
+  };
+
+  const onSubmitCreate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!projectId) {
+      setCreateErrorFeedback('缺少 project_id，无法创建对象。');
+      return;
+    }
+    setCreateFeedback('');
+    setCreateErrorFeedback('');
+    try {
+      const created = await api.createObject(resource, buildCreatePayload());
+      setCreatedObjectsByResource((prev) => {
+        const existing = prev[resource];
+        if (existing.some((item) => item.id === created.id)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [resource]: [...existing, created],
+        };
+      });
+      const logicalId = String(created.logical_object_id || '');
+      if (logicalId) {
+        setSelectedId(logicalId);
+      }
+      setCreateFeedback(`创建成功：${created.id}`);
+      void listState.run(() => api.listObjects(resource, projectId));
+    } catch (err) {
+      setCreateErrorFeedback(err instanceof Error ? err.message : '对象创建失败');
+    }
+  };
 
   const onSubmitProposal = async (e: FormEvent) => {
     e.preventDefault();
@@ -119,11 +220,77 @@ export function ObjectsPage() {
 
       {listState.loading && <LoadingState />}
       {listState.error && <ErrorState text={listState.error} />}
-      {listState.data?.length === 0 && <EmptyState text="当前类型无对象" />}
+      {visibleObjects.length === 0 && (
+        <div className="panel">
+          <EmptyState text="当前类型无对象" />
+          <form onSubmit={onSubmitCreate}>
+            <h3>新建当前类型对象</h3>
+            {resource === 'characters' && (
+              <label>
+                character_name
+                <input
+                  value={createForm.character_name}
+                  onChange={(e) => setCreateForm((s) => ({ ...s, character_name: e.target.value }))}
+                  required
+                />
+              </label>
+            )}
+            {resource === 'rules' && (
+              <>
+                <label>
+                  rule_name
+                  <input value={createForm.rule_name} onChange={(e) => setCreateForm((s) => ({ ...s, rule_name: e.target.value }))} required />
+                </label>
+                <label>
+                  description
+                  <input value={createForm.description} onChange={(e) => setCreateForm((s) => ({ ...s, description: e.target.value }))} required />
+                </label>
+              </>
+            )}
+            {resource === 'open-loops' && (
+              <label>
+                loop_name
+                <input value={createForm.loop_name} onChange={(e) => setCreateForm((s) => ({ ...s, loop_name: e.target.value }))} required />
+              </label>
+            )}
+            {resource === 'relationships' && (
+              <>
+                <label>
+                  source_character_id
+                  <input
+                    value={createForm.source_character_id}
+                    onChange={(e) => setCreateForm((s) => ({ ...s, source_character_id: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  target_character_id
+                  <input
+                    value={createForm.target_character_id}
+                    onChange={(e) => setCreateForm((s) => ({ ...s, target_character_id: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  relation_type
+                  <input
+                    value={createForm.relation_type}
+                    onChange={(e) => setCreateForm((s) => ({ ...s, relation_type: e.target.value }))}
+                    required
+                  />
+                </label>
+              </>
+            )}
+            <button type="submit" disabled={!projectId}>创建对象</button>
+          </form>
+          {createFeedback && <ActionSuccess text={createFeedback} />}
+          {createErrorFeedback && <ActionFailure text={createErrorFeedback} />}
+        </div>
+      )}
 
       <div className="grid">
         <ul>
-          {listState.data?.map((o) => {
+          {visibleObjects.map((o) => {
             const logicalId = String(o.logical_object_id || '');
             return (
               <li key={o.id} className="panel">
