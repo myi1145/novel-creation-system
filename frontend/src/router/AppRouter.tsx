@@ -17,6 +17,7 @@ export function AppRouter() {
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/projects" element={<ProjectsPage />} />
       <Route path="/projects/:projectId" element={<ProjectLayout />}>
+        <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
         <Route path="genres" element={<GenresPage />} />
         <Route path="canon" element={<CanonPage />} />
