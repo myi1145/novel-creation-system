@@ -27,10 +27,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let code: string | undefined;
     let details: unknown;
     try {
-      const payload = (await response.json()) as { message?: string; code?: string; details?: unknown };
-      if (payload.message) message = payload.message;
+      const payload = (await response.json()) as { message?: string; code?: string; details?: unknown; detail?: unknown };
+      details = payload.details ?? payload.detail;
+      if (payload.message) {
+        message = payload.message;
+      } else if (payload.detail) {
+        message = typeof payload.detail === 'string' ? payload.detail : `HTTP ${response.status}`;
+      }
       code = payload.code;
-      details = payload.details;
     } catch {
       // ignore non-json errors and fallback to HTTP status message
     }
