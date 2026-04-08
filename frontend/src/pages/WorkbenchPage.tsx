@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ActionFailure, ActionSuccess, EmptyState, PendingApprovalState } from '../components/Status';
@@ -28,10 +28,109 @@ export function WorkbenchPage() {
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const [stateDump, setStateDump] = useState<Record<string, unknown>>({});
+  const [isDecomposing, setIsDecomposing] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [isRevisingDraft, setIsRevisingDraft] = useState(false);
+  const [lastAction, setLastAction] = useState('');
+  const [lastActionResultSummary, setLastActionResultSummary] = useState('');
+  const [lastActionError, setLastActionError] = useState('');
+
+  const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
+  const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const cachedChapterNo = window.localStorage.getItem(lastChapterStorageKey);
+    if (!cachedChapterNo) return;
+    const parsed = Number(cachedChapterNo);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setChapterNo(parsed);
+    }
+  }, [lastChapterStorageKey, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    window.localStorage.setItem(lastChapterStorageKey, String(chapterNo));
+  }, [chapterNo, lastChapterStorageKey, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const raw = window.localStorage.getItem(chapterStorageKey);
+    if (!raw) return;
+    try {
+      const cached = JSON.parse(raw) as {
+        chapterNo?: number;
+        goalId?: string;
+        blueprintId?: string;
+        sceneIds?: string[];
+        draftId?: string;
+        blueprintCandidates?: ChapterBlueprint[];
+        lastAction?: string;
+        lastActionResultSummary?: string;
+        lastActionError?: string;
+      };
+      setGoalId(cached.goalId || '');
+      setBlueprintId(cached.blueprintId || '');
+      setSceneIds(Array.isArray(cached.sceneIds) ? cached.sceneIds : []);
+      setDraftId(cached.draftId || '');
+      setBlueprintCandidates(Array.isArray(cached.blueprintCandidates) ? cached.blueprintCandidates : []);
+      setLastAction(cached.lastAction || '');
+      setLastActionResultSummary(cached.lastActionResultSummary || '');
+      setLastActionError(cached.lastActionError || '');
+      setFeedback(cached.lastActionResultSummary ? '已恢复当前章本地缓存状态' : '');
+      setError('');
+    } catch {
+      setError('恢复本地缓存失败，请重新执行当前章步骤');
+    }
+  }, [chapterStorageKey, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const payload = {
+      chapterNo,
+      goalId,
+      blueprintId,
+      sceneIds,
+      draftId,
+      blueprintCandidates,
+      lastAction,
+      lastActionResultSummary,
+      lastActionError,
+    };
+    window.localStorage.setItem(chapterStorageKey, JSON.stringify(payload));
+  }, [
+    blueprintCandidates,
+    blueprintId,
+    chapterNo,
+    chapterStorageKey,
+    draftId,
+    goalId,
+    lastAction,
+    lastActionError,
+    lastActionResultSummary,
+    projectId,
+    sceneIds,
+  ]);
+
+  useEffect(() => {
+    if (!projectId || !goalId) return;
+    let mounted = true;
+    void api
+      .listBlueprints(projectId, goalId)
+      .then((items) => {
+        if (!mounted || items.length === 0) return;
+        setBlueprintCandidates(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, [goalId, projectId]);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setFeedback('');
     setError('');
+    setLastActionError('');
     try {
       const data = await action();
       setStateDump((s) => ({ ...s, last_result: data }));
@@ -85,28 +184,73 @@ export function WorkbenchPage() {
   };
 
   const decompose = () =>
-    run(async () => {
-      const scenes = await api.decomposeScenes({ project_id: projectId, blueprint_id: blueprintId });
-      setSceneIds(scenes.map((s) => s.id));
-      return scenes;
-    }, '场景拆解已完成');
+    run(
+      async () => {
+        setIsDecomposing(true);
+        setLastAction('场景拆解');
+        setLastActionResultSummary('正在执行场景拆解…');
+        try {
+          const scenes = await api.decomposeScenes({ project_id: projectId, blueprint_id: blueprintId });
+          const ids = scenes.map((s) => s.id);
+          setSceneIds(ids);
+          setLastActionResultSummary(`场景拆解完成，生成 scene_ids 数量：${ids.length}`);
+          return scenes;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '场景拆解失败';
+          setLastActionError(`场景拆解失败：${message}`);
+          throw new Error(`场景拆解失败：${message}`);
+        } finally {
+          setIsDecomposing(false);
+        }
+      },
+      '场景拆解已完成',
+    );
 
   const genDraft = () =>
-    run(async () => {
-      const d = await api.generateDraft({ project_id: projectId, blueprint_id: blueprintId, scene_ids: sceneIds });
-      setDraftId(d.id);
-      return d;
-    }, '草稿已生成');
+    run(
+      async () => {
+        setIsGeneratingDraft(true);
+        setLastAction('草稿生成');
+        setLastActionResultSummary('正在生成草稿…');
+        try {
+          const d = await api.generateDraft({ project_id: projectId, blueprint_id: blueprintId, scene_ids: sceneIds });
+          setDraftId(d.id);
+          setLastActionResultSummary(`草稿生成完成，draft_id：${d.id}`);
+          return d;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '草稿生成失败';
+          setLastActionError(`草稿生成失败：${message}`);
+          throw new Error(`草稿生成失败：${message}`);
+        } finally {
+          setIsGeneratingDraft(false);
+        }
+      },
+      '草稿已生成',
+    );
 
   const reviseDraft = () =>
     run(
-      async () =>
-        api.reviseDraft({
-          project_id: projectId,
-          draft_id: draftId,
-          revision_instruction: '按 Gate 建议修订',
-          revised_by: 'frontend_user',
-        }),
+      async () => {
+        setIsRevisingDraft(true);
+        setLastAction('草稿修订');
+        setLastActionResultSummary('正在修订草稿…');
+        try {
+          const revised = await api.reviseDraft({
+            project_id: projectId,
+            draft_id: draftId,
+            revision_instruction: '按 Gate 建议修订',
+            revised_by: 'frontend_user',
+          });
+          setLastActionResultSummary(`草稿修订完成，draft_id：${String(revised.id || draftId)}，status：${String(revised.status || '-')}`);
+          return revised;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '草稿修订失败';
+          setLastActionError(`草稿修订失败：${message}`);
+          throw new Error(`草稿修订失败：${message}`);
+        } finally {
+          setIsRevisingDraft(false);
+        }
+      },
       '草稿已修订',
     );
 
@@ -116,6 +260,8 @@ export function WorkbenchPage() {
       <div className="panel">步骤：{STEPS.join(' → ')}</div>
       <div className="panel">
         当前章摘要：chapter_no={chapterNo}，goal={goalId || '-'}，blueprint={blueprintId || '-'}，draft={draftId || '-'}
+        ，scene_ids={sceneIds.length}，最近动作={lastAction || '-'}，最近结果={lastActionResultSummary || '-'}，最近错误=
+        {lastActionError || '-'}
       </div>
       <div className="panel">
         <label>
@@ -130,14 +276,14 @@ export function WorkbenchPage() {
           <input placeholder="blueprint_id" value={blueprintId} onChange={(e) => setBlueprintId(e.target.value)} required />
           <button>3) 选择蓝图</button>
         </form>
-        <button onClick={decompose} disabled={!blueprintId}>
-          4) 场景拆解
+        <button onClick={decompose} disabled={!blueprintId || isDecomposing}>
+          {isDecomposing ? '4) 场景拆解执行中…' : '4) 场景拆解'}
         </button>
-        <button onClick={genDraft} disabled={!blueprintId}>
-          5) 草稿生成
+        <button onClick={genDraft} disabled={!blueprintId || isGeneratingDraft}>
+          {isGeneratingDraft ? '5) 草稿生成执行中…' : '5) 草稿生成'}
         </button>
-        <button onClick={reviseDraft} disabled={!draftId}>
-          6) 草稿修订
+        <button onClick={reviseDraft} disabled={!draftId || isRevisingDraft}>
+          {isRevisingDraft ? '6) 草稿修订执行中…' : '6) 草稿修订'}
         </button>
       </div>
 
