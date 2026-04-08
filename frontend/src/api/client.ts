@@ -14,6 +14,7 @@ export const api = {
     http.post<CanonSnapshot>('/canon/snapshots/init', payload),
 
   listObjects: (resource: string, projectId: string) => http.get<CreativeObject[]>(`/objects/${resource}?project_id=${projectId}`),
+  createObject: (resource: string, payload: Dict) => http.post<CreativeObject>(`/objects/${resource}`, payload),
   objectHistory: (resource: string, projectId: string, logicalObjectId: string) =>
     http.get<CreativeObject[]>(`/objects/${resource}/history?project_id=${projectId}&logical_object_id=${logicalObjectId}`),
   proposeObjectUpdate: (resource: string, logicalObjectId: string, payload: Dict) =>
