@@ -17,6 +17,18 @@ function toSummary(blueprint: ChapterBlueprint) {
   };
 }
 
+type LastScenesPayload = {
+  scene_ids: string[];
+  scene_count: number;
+  sample_titles: string[];
+};
+
+type LastDraftPayload = {
+  draft_id: string;
+  status: string;
+  summary: string;
+};
+
 export function WorkbenchPage() {
   const { projectId = '' } = useParams();
   const [chapterNo, setChapterNo] = useState(1);
@@ -34,6 +46,10 @@ export function WorkbenchPage() {
   const [lastAction, setLastAction] = useState('');
   const [lastActionResultSummary, setLastActionResultSummary] = useState('');
   const [lastActionError, setLastActionError] = useState('');
+  const [blueprintSource, setBlueprintSource] = useState<'none' | 'api' | 'cache'>('none');
+  const [lastScenesPayload, setLastScenesPayload] = useState<LastScenesPayload | null>(null);
+  const [lastDraftPayload, setLastDraftPayload] = useState<LastDraftPayload | null>(null);
+  const [lastRevisedDraftPayload, setLastRevisedDraftPayload] = useState<LastDraftPayload | null>(null);
 
   const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
   const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
@@ -65,6 +81,9 @@ export function WorkbenchPage() {
         sceneIds?: string[];
         draftId?: string;
         blueprintCandidates?: ChapterBlueprint[];
+        lastScenesPayload?: LastScenesPayload | null;
+        lastDraftPayload?: LastDraftPayload | null;
+        lastRevisedDraftPayload?: LastDraftPayload | null;
         lastAction?: string;
         lastActionResultSummary?: string;
         lastActionError?: string;
@@ -73,7 +92,12 @@ export function WorkbenchPage() {
       setBlueprintId(cached.blueprintId || '');
       setSceneIds(Array.isArray(cached.sceneIds) ? cached.sceneIds : []);
       setDraftId(cached.draftId || '');
-      setBlueprintCandidates(Array.isArray(cached.blueprintCandidates) ? cached.blueprintCandidates : []);
+      const cachedBlueprints = Array.isArray(cached.blueprintCandidates) ? cached.blueprintCandidates : [];
+      setBlueprintCandidates(cachedBlueprints);
+      setBlueprintSource(cachedBlueprints.length > 0 ? 'cache' : 'none');
+      setLastScenesPayload(cached.lastScenesPayload || null);
+      setLastDraftPayload(cached.lastDraftPayload || null);
+      setLastRevisedDraftPayload(cached.lastRevisedDraftPayload || null);
       setLastAction(cached.lastAction || '');
       setLastActionResultSummary(cached.lastActionResultSummary || '');
       setLastActionError(cached.lastActionError || '');
@@ -93,6 +117,9 @@ export function WorkbenchPage() {
       sceneIds,
       draftId,
       blueprintCandidates,
+      lastScenesPayload,
+      lastDraftPayload,
+      lastRevisedDraftPayload,
       lastAction,
       lastActionResultSummary,
       lastActionError,
@@ -105,9 +132,12 @@ export function WorkbenchPage() {
     chapterStorageKey,
     draftId,
     goalId,
+    lastDraftPayload,
     lastAction,
     lastActionError,
     lastActionResultSummary,
+    lastRevisedDraftPayload,
+    lastScenesPayload,
     projectId,
     sceneIds,
   ]);
@@ -120,6 +150,7 @@ export function WorkbenchPage() {
       .then((items) => {
         if (!mounted || items.length === 0) return;
         setBlueprintCandidates(items);
+        setBlueprintSource('api');
       })
       .catch(() => undefined);
     return () => {
@@ -160,6 +191,7 @@ export function WorkbenchPage() {
       const all = await api.listBlueprints(projectId, goalId);
       const candidates = all.length > 0 ? all : generated;
       setBlueprintCandidates(candidates);
+      setBlueprintSource(all.length > 0 ? 'api' : 'cache');
       return { generated_count: generated.length, loaded_count: candidates.length, candidates };
     }, '蓝图候选已生成并加载');
 
@@ -192,7 +224,16 @@ export function WorkbenchPage() {
         try {
           const scenes = await api.decomposeScenes({ project_id: projectId, blueprint_id: blueprintId });
           const ids = scenes.map((s) => s.id);
+          const sampleTitles = scenes
+            .map((item) => String(item.title || item.scene_title || '').trim())
+            .filter((item) => item.length > 0)
+            .slice(0, 3);
           setSceneIds(ids);
+          setLastScenesPayload({
+            scene_ids: ids,
+            scene_count: ids.length,
+            sample_titles: sampleTitles,
+          });
           setLastActionResultSummary(`场景拆解完成，生成 scene_ids 数量：${ids.length}`);
           return scenes;
         } catch (e) {
@@ -215,6 +256,12 @@ export function WorkbenchPage() {
         try {
           const d = await api.generateDraft({ project_id: projectId, blueprint_id: blueprintId, scene_ids: sceneIds });
           setDraftId(d.id);
+          const summary = String(d.summary || d.abstract || d.content_preview || '').trim();
+          setLastDraftPayload({
+            draft_id: String(d.id || '-'),
+            status: String(d.status || '-'),
+            summary: summary || '（未返回草稿摘要）',
+          });
           setLastActionResultSummary(`草稿生成完成，draft_id：${d.id}`);
           return d;
         } catch (e) {
@@ -240,6 +287,14 @@ export function WorkbenchPage() {
             draft_id: draftId,
             revision_instruction: '按 Gate 建议修订',
             revised_by: 'frontend_user',
+          });
+          const revisedDraftId = String(revised.id || draftId);
+          const revisedSummary = String(revised.summary || revised.abstract || revised.content_preview || '').trim();
+          setDraftId(revisedDraftId);
+          setLastRevisedDraftPayload({
+            draft_id: revisedDraftId,
+            status: String(revised.status || '-'),
+            summary: revisedSummary || '（未返回修订摘要）',
           });
           setLastActionResultSummary(`草稿修订完成，draft_id：${String(revised.id || draftId)}，status：${String(revised.status || '-')}`);
           return revised;
@@ -289,6 +344,7 @@ export function WorkbenchPage() {
 
       <div className="panel">
         <h3>蓝图候选列表（最小选择子视图）</h3>
+        <div>数据来源：{blueprintSource === 'api' ? '当前回读内容' : blueprintSource === 'cache' ? '最近缓存内容' : '-'}</div>
         {blueprintCandidates.length === 0 ? (
           <EmptyState text="请先执行“生成蓝图候选”" />
         ) : (
@@ -309,6 +365,50 @@ export function WorkbenchPage() {
             })}
           </ul>
         )}
+      </div>
+
+      <div className="panel">
+        <h3>最近场景结果（重进可见）</h3>
+        {!lastScenesPayload ? (
+          <EmptyState text="尚无已缓存的场景拆解结果" />
+        ) : (
+          <div>
+            <div>scene 数量：{lastScenesPayload.scene_count}</div>
+            <div>scene_ids：{lastScenesPayload.scene_ids.join('，') || '-'}</div>
+            <div>场景标题样例：{lastScenesPayload.sample_titles.join('；') || '-'}</div>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h3>最近草稿结果（重进可见）</h3>
+        {!lastDraftPayload && !lastRevisedDraftPayload ? (
+          <EmptyState text="尚无已缓存的草稿结果" />
+        ) : (
+          <div>
+            {lastDraftPayload && (
+              <div className="panel">
+                <div>最近草稿生成：draft_id={lastDraftPayload.draft_id}</div>
+                <div>status：{lastDraftPayload.status}</div>
+                <div>摘要：{lastDraftPayload.summary}</div>
+              </div>
+            )}
+            {lastRevisedDraftPayload && (
+              <div className="panel">
+                <div>最近草稿修订：draft_id={lastRevisedDraftPayload.draft_id}</div>
+                <div>status：{lastRevisedDraftPayload.status}</div>
+                <div>摘要：{lastRevisedDraftPayload.summary}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h3>最近动作结果</h3>
+        <div>上一次执行：{lastAction || '-'}</div>
+        <div>结果摘要：{lastActionResultSummary || '-'}</div>
+        <div>建议下一步：{draftId ? '进入 Gate / ChangeSet / Publish 页面继续闭环' : blueprintId ? '可继续场景拆解或草稿生成' : goalId ? '可继续生成并选择蓝图' : '先创建章节目标'}</div>
       </div>
 
       {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
