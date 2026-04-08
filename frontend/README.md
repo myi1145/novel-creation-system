@@ -1,4 +1,4 @@
-# 前端第一版创作工作台（最小闭环）
+# 前端创作工作台（第二轮接线收口）
 
 本工程为独立前端目录，仅消费后端 `/api/v1` 公开接口，不改后端主链逻辑。
 
@@ -20,6 +20,7 @@ npm run build
 ## 路由
 
 - `/projects`
+- `/projects/:projectId`（默认重定向到 `/projects/:projectId/overview`）
 - `/projects/:projectId/overview`
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
@@ -32,6 +33,7 @@ npm run build
 
 ## 说明
 
+- 项目列表“进入项目”默认进入 `overview`，先看聚合状态再继续主链处理。
 - Canon 初始化仅调用 `/canon/snapshots/init`。
 - Canon 的长期写入必须通过 ChangeSet 审批/应用链路（前端未绕过）。
 - 对象页已提供对象侧 `update / restore / retire` ChangeSet 提议入口，提议后在 ChangeSet 页审批。
