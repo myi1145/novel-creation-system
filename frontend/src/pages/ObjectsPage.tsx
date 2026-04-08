@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAsync } from '../features/useAsync';
 import type { Dict } from '../types/api';
 import type { CreativeObject } from '../types/domain';
+import { toActionErrorMessage } from '../utils/actionError';
 
 const OBJECT_TYPES = ['characters', 'rules', 'open-loops', 'relationships'] as const;
 
@@ -75,6 +77,8 @@ export function ObjectsPage() {
   const [createErrorFeedback, setCreateErrorFeedback] = useState('');
   const [feedback, setFeedback] = useState('');
   const [errorFeedback, setErrorFeedback] = useState('');
+  const [isCreatingObject, setIsCreatingObject] = useState(false);
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
 
   const listState = useAsync<Awaited<ReturnType<typeof api.listObjects>>>();
   const historyState = useAsync<Awaited<ReturnType<typeof api.objectHistory>>>();
@@ -139,6 +143,8 @@ export function ObjectsPage() {
     }
     setCreateFeedback('');
     setCreateErrorFeedback('');
+    if (isCreatingObject) return;
+    setIsCreatingObject(true);
     try {
       const created = await api.createObject(resource, buildCreatePayload());
       setCreatedObjectsByResource((prev) => {
@@ -158,7 +164,13 @@ export function ObjectsPage() {
       setCreateFeedback(`创建成功：${created.id}`);
       void listState.run(() => api.listObjects(resource, projectId));
     } catch (err) {
-      setCreateErrorFeedback(err instanceof Error ? err.message : '对象创建失败');
+      if (err instanceof ApiError && err.status === 422) {
+        setCreateErrorFeedback('对象创建失败，请检查必填字段与对象类型后重试。');
+      } else {
+        setCreateErrorFeedback(toActionErrorMessage('创建对象', err, '请确认输入字段后重试。'));
+      }
+    } finally {
+      setIsCreatingObject(false);
     }
   };
 
@@ -170,6 +182,8 @@ export function ObjectsPage() {
     }
     setFeedback('');
     setErrorFeedback('');
+    if (isSubmittingProposal) return;
+    setIsSubmittingProposal(true);
 
     try {
       let response;
@@ -202,7 +216,13 @@ export function ObjectsPage() {
       }
       setFeedback(`提议已创建：${response.id}（可前往 ChangeSet 页面审批）`);
     } catch (err) {
-      setErrorFeedback(err instanceof Error ? err.message : '提议创建失败');
+      if (err instanceof ApiError && err.status === 422) {
+        setErrorFeedback('提交对象提议失败，请确认对象字段、版本参数与当前状态后重试。');
+      } else {
+        setErrorFeedback(toActionErrorMessage('提交对象提议', err, '请确认提议参数与对象状态。'));
+      }
+    } finally {
+      setIsSubmittingProposal(false);
     }
   };
 
@@ -281,8 +301,9 @@ export function ObjectsPage() {
                 </label>
               </>
             )}
-            <button type="submit" disabled={!projectId}>创建对象</button>
+            <button type="submit" disabled={!projectId || isCreatingObject}>{isCreatingObject ? '创建中...' : '创建对象'}</button>
           </form>
+          {isCreatingObject && <LoadingState text="正在创建对象..." />}
           {createFeedback && <ActionSuccess text={createFeedback} />}
           {createErrorFeedback && <ActionFailure text={createErrorFeedback} />}
         </div>
@@ -306,8 +327,8 @@ export function ObjectsPage() {
         <div>
           <h3>对象历史版本</h3>
           {selectedId && (
-            <button onClick={() => void historyState.run(() => api.objectHistory(resource, projectId, selectedId))}>
-              查看历史
+            <button disabled={historyState.loading} onClick={() => void historyState.run(() => api.objectHistory(resource, projectId, selectedId))}>
+              {historyState.loading ? '加载中...' : '查看历史'}
             </button>
           )}
           {historyState.loading && <LoadingState text="历史加载中" />}
@@ -390,8 +411,11 @@ export function ObjectsPage() {
                 />
               </label>
             )}
-            <button type="submit" disabled={!selectedObject || !projectId}>提交提议</button>
+            <button type="submit" disabled={!selectedObject || !projectId || isSubmittingProposal}>
+              {isSubmittingProposal ? '提交中...' : '提交提议'}
+            </button>
           </form>
+          {isSubmittingProposal && <LoadingState text="正在提交对象提议..." />}
           {feedback && <ActionSuccess text={feedback} />}
           {feedback && projectId && (
             <div className="panel">
