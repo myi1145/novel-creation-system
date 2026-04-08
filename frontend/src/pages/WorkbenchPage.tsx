@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, PendingApprovalState } from '../components/Status';
@@ -71,6 +71,9 @@ export function WorkbenchPage() {
   const [lastRevisedDraftPayload, setLastRevisedDraftPayload] = useState<LastDraftPayload | null>(null);
   const [chapterExistsHint, setChapterExistsHint] = useState('');
   const [isRehydratingChapter, setIsRehydratingChapter] = useState(false);
+  const [expandedBlueprintId, setExpandedBlueprintId] = useState('');
+  const [compareBlueprintA, setCompareBlueprintA] = useState('');
+  const [compareBlueprintB, setCompareBlueprintB] = useState('');
 
   const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
   const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
@@ -439,6 +442,10 @@ export function WorkbenchPage() {
       '草稿已修订',
     );
 
+  const selectedCompareA = blueprintCandidates.find((item) => item.id === compareBlueprintA) || null;
+  const selectedCompareB = blueprintCandidates.find((item) => item.id === compareBlueprintB) || null;
+
+
   return (
     <div>
       <h2>章节工作台</h2>
@@ -490,27 +497,67 @@ export function WorkbenchPage() {
       </div>
 
       <div className="panel">
-        <h3>蓝图候选列表（最小选择子视图）</h3>
+        <h3>蓝图候选列表 + 对比子视图</h3>
         <div>数据来源：{blueprintSource === 'api' ? '当前回读内容' : blueprintSource === 'cache' ? '最近缓存内容' : '-'}</div>
         {blueprintCandidates.length === 0 ? (
           <EmptyState text="请先执行“生成蓝图候选”" />
         ) : (
-          <ul>
-            {blueprintCandidates.map((item) => {
-              const summary = toSummary(item);
-              return (
-                <li key={summary.id} className="panel">
-                  <div>候选ID：{summary.id}</div>
-                  <div>标题：{summary.title_hint}</div>
-                  <div>摘要：{summary.summary}</div>
-                  <div>推进点：{summary.advances.join('；') || '-'}</div>
-                  <div>风险：{summary.risks.join('；') || '-'}</div>
-                  <div>后端 selected：{String(summary.selected)}</div>
-                  <button onClick={() => selectCandidateInUi(summary.id)}>设为当前 blueprint_id</button>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <div className="panel">
+              <label>对比 A
+                <select value={compareBlueprintA} onChange={(e) => setCompareBlueprintA(e.target.value)}>
+                  <option value="">请选择</option>
+                  {blueprintCandidates.map((item) => (<option key={`a-${item.id}`} value={item.id}>{item.id}</option>))}
+                </select>
+              </label>
+              <label>对比 B
+                <select value={compareBlueprintB} onChange={(e) => setCompareBlueprintB(e.target.value)}>
+                  <option value="">请选择</option>
+                  {blueprintCandidates.map((item) => (<option key={`b-${item.id}`} value={item.id}>{item.id}</option>))}
+                </select>
+              </label>
+            </div>
+            {selectedCompareA && selectedCompareB && selectedCompareA.id !== selectedCompareB.id && (
+              <div className="grid">
+                <div className="panel">
+                  <h4>对比 A：{selectedCompareA.id}</h4>
+                  <div>摘要：{String(selectedCompareA.summary || '-')}</div>
+                  <div>结构要点：{Array.isArray(selectedCompareA.advances) ? selectedCompareA.advances.join('；') || '-' : '-'}</div>
+                  <div>冲突/风险：{Array.isArray(selectedCompareA.risks) ? selectedCompareA.risks.join('；') || '-' : '-'}</div>
+                  <button onClick={() => selectCandidateInUi(selectedCompareA.id)}>选中 A 继续</button>
+                </div>
+                <div className="panel">
+                  <h4>对比 B：{selectedCompareB.id}</h4>
+                  <div>摘要：{String(selectedCompareB.summary || '-')}</div>
+                  <div>结构要点：{Array.isArray(selectedCompareB.advances) ? selectedCompareB.advances.join('；') || '-' : '-'}</div>
+                  <div>冲突/风险：{Array.isArray(selectedCompareB.risks) ? selectedCompareB.risks.join('；') || '-' : '-'}</div>
+                  <button onClick={() => selectCandidateInUi(selectedCompareB.id)}>选中 B 继续</button>
+                </div>
+              </div>
+            )}
+            <ul>
+              {blueprintCandidates.map((item) => {
+                const summary = toSummary(item);
+                const isExpanded = expandedBlueprintId === summary.id;
+                return (
+                  <li key={summary.id} className="panel">
+                    <div>候选ID：{summary.id}</div>
+                    <div>标题：{summary.title_hint}</div>
+                    <div>后端 selected：{String(summary.selected)}</div>
+                    <button onClick={() => setExpandedBlueprintId(isExpanded ? '' : summary.id)}>{isExpanded ? '收起详情' : '展开详情'}</button>
+                    <button onClick={() => selectCandidateInUi(summary.id)}>设为当前 blueprint_id</button>
+                    {isExpanded && (
+                      <div className="panel">
+                        <div>摘要：{summary.summary}</div>
+                        <div>推进点：{summary.advances.join('；') || '-'}</div>
+                        <div>风险：{summary.risks.join('；') || '-'}</div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </div>
 
@@ -556,6 +603,16 @@ export function WorkbenchPage() {
         <div>上一次执行：{lastAction || '-'}</div>
         <div>结果摘要：{lastActionResultSummary || '-'}</div>
         <div>建议下一步：{draftId ? '进入 Gate / ChangeSet / Publish 页面继续闭环' : blueprintId ? '可继续场景拆解或草稿生成' : goalId ? '可继续生成并选择蓝图' : '先创建章节目标'}</div>
+      </div>
+
+      <div className="panel">
+        <h3>继续处理入口</h3>
+        <div className="project-nav">
+          <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
+          <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
+          <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
+        </div>
       </div>
 
       {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}

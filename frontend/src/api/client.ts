@@ -35,6 +35,13 @@ export const api = {
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),
 
+
+  listWorkflowRuns: (projectId: string) => http.get<Dict[]>(`/workflows/runs?project_id=${projectId}`),
+  getWorkflowRunDetail: (workflowRunId: string) => http.get<Dict>(`/workflows/runs/${workflowRunId}`),
+  pauseWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/pause', payload),
+  resumeWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/resume', payload),
+  manualTakeoverWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/manual-takeover', payload),
+
   runGateReview: (payload: Dict) => http.post<{ gate_names: string[]; results: Dict[] }>('/gates/reviews', payload),
 
   generateDraftChangeSetProposal: (draftId: string, payload: Dict) =>
