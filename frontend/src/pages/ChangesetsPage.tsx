@@ -14,6 +14,7 @@ export function ChangesetsPage() {
   const [error, setError] = useState('');
   const [isCreatingFromDraft, setIsCreatingFromDraft] = useState(false);
   const [runningActionById, setRunningActionById] = useState<Record<string, 'approve' | 'reject' | 'apply' | 'rollback' | undefined>>({});
+  const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
 
   const reload = async () => {
     setLoading(true);
@@ -27,6 +28,14 @@ export function ChangesetsPage() {
   useEffect(() => {
     void reload();
   }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const cached = window.localStorage.getItem(lastDraftStorageKey);
+    if (cached) {
+      setDraftId(cached);
+    }
+  }, [lastDraftStorageKey, projectId]);
 
   const run = async (fn: () => Promise<unknown>, message: string, actionLabel: string) => {
     setFeedback('');
@@ -70,6 +79,9 @@ export function ChangesetsPage() {
                   '已生成 ChangeSet 提议',
                   '从草稿生成 ChangeSet 提议',
                 );
+                if (draftId.trim()) {
+                  window.localStorage.setItem(lastDraftStorageKey, draftId.trim());
+                }
               } finally {
                 setIsCreatingFromDraft(false);
               }

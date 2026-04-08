@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAsync } from '../features/useAsync';
 import { ActionFailure, ActionSuccess, EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useProject } from '../context/ProjectContext';
+import { toActionErrorMessage } from '../utils/actionError';
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -13,11 +14,14 @@ export function ProjectsPage() {
   const [premise, setPremise] = useState('');
   const [feedback, setFeedback] = useState('');
   const [feedbackErr, setFeedbackErr] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   useEffect(() => { void projects.run(() => api.listProjects()); }, []);
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault();
+    if (isCreatingProject) return;
+    setIsCreatingProject(true);
     setFeedback('');
     setFeedbackErr('');
     try {
@@ -25,7 +29,11 @@ export function ProjectsPage() {
       setFeedback(`项目 ${created.project_name} 创建成功`);
       setProjectName(''); setPremise('');
       await projects.run(() => api.listProjects());
-    } catch (err) { setFeedbackErr(err instanceof Error ? err.message : '创建失败'); }
+    } catch (err) {
+      setFeedbackErr(toActionErrorMessage('创建项目', err, '请检查项目名称和简介后重试。'));
+    } finally {
+      setIsCreatingProject(false);
+    }
   };
 
   return (
@@ -34,7 +42,7 @@ export function ProjectsPage() {
       <form onSubmit={onCreate} className="panel">
         <input placeholder="项目名" value={projectName} onChange={(e) => setProjectName(e.target.value)} required />
         <textarea placeholder="项目 premise" value={premise} onChange={(e) => setPremise(e.target.value)} required />
-        <button type="submit">新建项目</button>
+        <button type="submit" disabled={isCreatingProject}>{isCreatingProject ? '创建中...' : '新建项目'}</button>
       </form>
       {feedback && <ActionSuccess text={feedback} />}
       {feedbackErr && <ActionFailure text={feedbackErr} />}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
@@ -14,6 +14,15 @@ export function GatesPage() {
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const [isRunningGate, setIsRunningGate] = useState(false);
+  const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const cached = window.localStorage.getItem(lastDraftStorageKey);
+    if (cached) {
+      setDraftId(cached);
+    }
+  }, [lastDraftStorageKey, projectId]);
 
   const run = async () => {
     if (isRunningGate) return;
@@ -30,6 +39,7 @@ export function GatesPage() {
         draft_id: sanitizedDraftId,
         gate_names: [...DEFAULT_GATE_NAMES],
       });
+      window.localStorage.setItem(lastDraftStorageKey, sanitizedDraftId);
       setResult(data as Record<string, unknown>);
       setFeedback('Gate 审查完成');
     } catch (e) {
