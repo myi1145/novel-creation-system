@@ -244,6 +244,18 @@ class ChapterSummary(BaseModel):
     generated_at: datetime
 
 
+class ChapterWorkbenchState(BaseModel):
+    project_id: str
+    chapter_no: int
+    goal_id: str | None = None
+    blueprint_candidates: list[ChapterBlueprint] = Field(default_factory=list)
+    selected_blueprint_id: str | None = None
+    scene_ids: list[str] = Field(default_factory=list)
+    latest_draft: ChapterDraft | None = None
+    recovery_stage: str = "empty"
+    recovery_hint: str = "当前章节暂无可恢复内容，可先创建章节目标"
+
+
 class PublishDraftRequest(BaseModel):
     project_id: str
     draft_id: str
