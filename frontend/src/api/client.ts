@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChangeSet, CreativeObject, Genre, Project, SceneCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CreativeObject, Genre, Project, SceneCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 export const api = {
@@ -25,6 +25,8 @@ export const api = {
     http.post<ChangeSet>(`/objects/${resource}/${logicalObjectId}/changesets/retire`, payload),
 
   createGoal: (payload: Dict) => http.post<ChapterGoal>('/chapters/goals', payload),
+  getChapterWorkbenchState: (projectId: string, chapterNo: number) =>
+    http.get<ChapterWorkbenchState>(`/chapters/workbench-state?project_id=${projectId}&chapter_no=${chapterNo}`),
   generateBlueprints: (payload: Dict) => http.post<ChapterBlueprint[]>('/chapters/blueprints/generate', payload),
   listBlueprints: (projectId: string, chapterGoalId?: string) =>
     http.get<ChapterBlueprint[]>(`/chapters/blueprints?project_id=${projectId}${chapterGoalId ? `&chapter_goal_id=${chapterGoalId}` : ''}`),

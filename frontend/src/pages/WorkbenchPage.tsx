@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, PendingApprovalState } from '../components/Status';
-import type { ChapterBlueprint } from '../types/domain';
+import type { ChapterBlueprint, ChapterWorkbenchState } from '../types/domain';
 
 const STEPS = ['目标', '蓝图', '场景', '草稿', 'Gate', 'ChangeSet', 'Publish'];
 
@@ -181,6 +181,33 @@ export function WorkbenchPage() {
     setLastActionError(cached.lastActionError || '');
   };
 
+  const hydrateFromApiState = (state: ChapterWorkbenchState) => {
+    setGoalId(String(state.goal_id || ''));
+    const candidates = Array.isArray(state.blueprint_candidates) ? state.blueprint_candidates : [];
+    setBlueprintCandidates(candidates);
+    setBlueprintSource(candidates.length > 0 ? 'api' : 'none');
+    const selectedBlueprintId = String(state.selected_blueprint_id || '');
+    if (selectedBlueprintId) setBlueprintId(selectedBlueprintId);
+    const ids = Array.isArray(state.scene_ids) ? state.scene_ids.map((item) => String(item)) : [];
+    if (ids.length > 0) {
+      setSceneIds(ids);
+      setLastScenesPayload((prev) => {
+        const sampleTitles = Array.isArray(prev?.sample_titles) ? prev.sample_titles : [];
+        return { scene_ids: ids, scene_count: ids.length, sample_titles: sampleTitles };
+      });
+    }
+    const latestDraft = state.latest_draft;
+    if (latestDraft?.id) {
+      const draftSummary = String(latestDraft.summary || latestDraft.abstract || latestDraft.content_preview || '').trim();
+      setDraftId(String(latestDraft.id));
+      setLastDraftPayload({
+        draft_id: String(latestDraft.id),
+        status: String(latestDraft.status || '-'),
+        summary: draftSummary || '（由恢复接口读取到草稿，但未返回摘要）',
+      });
+    }
+  };
+
   const restoreCurrentChapter = async (trigger: 'manual' | 'auto') => {
     if (!projectId) return;
     setError('');
@@ -214,11 +241,24 @@ export function WorkbenchPage() {
           // fallback to cache-only restore
         }
       }
-      if (hasCache) {
-        setFeedback(trigger === 'auto' ? `当前第 ${chapterNo} 章目标已存在，已恢复当前章缓存并尝试回读蓝图` : `已恢复第 ${chapterNo} 章已有内容（缓存优先）`);
+      const remoteState = await api.getChapterWorkbenchState(projectId, chapterNo);
+      hydrateFromApiState(remoteState);
+      const remoteHasData = Boolean(remoteState.goal_id || (remoteState.blueprint_candidates || []).length > 0 || (remoteState.scene_ids || []).length > 0 || remoteState.latest_draft?.id);
+      if (remoteHasData) {
+        setLastAction('读取当前章已有内容');
+        setLastActionResultSummary(`恢复阶段：${remoteState.recovery_stage || '-'}；${remoteState.recovery_hint || '已恢复当前章已有内容'}`);
+        setFeedback(
+          trigger === 'auto'
+            ? `当前第 ${chapterNo} 章目标已存在，已自动读取已有内容：${remoteState.recovery_hint || '可继续当前章流程'}`
+            : `已读取第 ${chapterNo} 章已有内容：${remoteState.recovery_hint || '可继续当前章流程'}`,
+        );
+      } else if (hasCache) {
+        setFeedback(`已恢复第 ${chapterNo} 章本地缓存，但服务端未查到更多内容。`);
       } else {
-        setFeedback(`未找到第 ${chapterNo} 章本地缓存。可先执行“创建目标”或从已知 goal_id 继续。`);
+        setFeedback(`当前第 ${chapterNo} 章暂无可恢复内容，可先创建章节目标。`);
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '读取当前章已有内容失败');
     } finally {
       setIsRehydratingChapter(false);
     }

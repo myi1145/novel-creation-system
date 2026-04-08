@@ -22,6 +22,7 @@ from app.schemas.chapter import (
     ChapterBlueprint,
     ChapterDraft,
     ChapterGoal,
+    ChapterWorkbenchState,
     ChapterStateTransition,
     CreateChapterGoalRequest,
     DecomposeScenesRequest,
@@ -334,6 +335,69 @@ class ChapterService:
             query = query.filter(ChapterBlueprintORM.selected.is_(True))
         items = query.order_by(ChapterBlueprintORM.created_at.asc()).all()
         return [_to_blueprint_schema(item) for item in items]
+
+    def get_chapter_workbench_state(self, db: Session, project_id: str, chapter_no: int) -> ChapterWorkbenchState:
+        goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+        if goal is None:
+            return ChapterWorkbenchState(
+                project_id=project_id,
+                chapter_no=chapter_no,
+                recovery_stage="empty",
+                recovery_hint=f"当前第 {chapter_no} 章暂无已创建目标，可先执行“创建目标”",
+            )
+        blueprints = (
+            db.query(ChapterBlueprintORM)
+            .filter(ChapterBlueprintORM.project_id == project_id, ChapterBlueprintORM.chapter_goal_id == goal.id)
+            .order_by(ChapterBlueprintORM.created_at.asc())
+            .all()
+        )
+        blueprint_schemas = [_to_blueprint_schema(item) for item in blueprints]
+        selected_blueprint = next((item for item in blueprints if item.selected), None)
+        selected_blueprint_id = selected_blueprint.id if selected_blueprint is not None else None
+        scene_ids: list[str] = []
+        latest_draft = None
+        if selected_blueprint_id:
+            scenes = (
+                db.query(SceneCardORM)
+                .filter(SceneCardORM.project_id == project_id, SceneCardORM.blueprint_id == selected_blueprint_id)
+                .order_by(SceneCardORM.created_at.asc())
+                .all()
+            )
+            scene_ids = [item.id for item in scenes]
+            latest_draft_entity = (
+                db.query(ChapterDraftORM)
+                .filter(ChapterDraftORM.project_id == project_id, ChapterDraftORM.blueprint_id == selected_blueprint_id)
+                .order_by(ChapterDraftORM.created_at.desc())
+                .first()
+            )
+            if latest_draft_entity is not None:
+                latest_draft = _to_draft_schema(latest_draft_entity)
+        recovery_stage = "goal"
+        recovery_hint = "当前章目标已存在，可继续生成蓝图候选"
+        if selected_blueprint_id:
+            recovery_stage = "blueprint_selected"
+            recovery_hint = "当前章已存在已选蓝图，可继续场景拆解或草稿生成"
+        if scene_ids:
+            recovery_stage = "scenes_ready"
+            recovery_hint = "当前章已存在场景拆解结果，可继续草稿生成"
+        if latest_draft is not None:
+            recovery_stage = "draft_ready"
+            recovery_hint = "当前章已存在草稿，可继续修订或进入 Gate"
+        return ChapterWorkbenchState(
+            project_id=project_id,
+            chapter_no=chapter_no,
+            goal_id=goal.id,
+            blueprint_candidates=blueprint_schemas,
+            selected_blueprint_id=selected_blueprint_id,
+            scene_ids=scene_ids,
+            latest_draft=latest_draft,
+            recovery_stage=recovery_stage,
+            recovery_hint=recovery_hint,
+        )
 
     def select_blueprint(self, db: Session, request: SelectBlueprintRequest) -> ChapterBlueprint:
         set_log_context(project_id=request.project_id, module="chapter_service", event="select_blueprint", status="started")

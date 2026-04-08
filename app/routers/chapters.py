@@ -29,6 +29,12 @@ def create_goal(request: CreateChapterGoalRequest, db: Session = Depends(get_db)
     return success_response(data=goal.model_dump(mode="json"), message="章节目标已创建")
 
 
+@router.get("/workbench-state")
+def get_workbench_state(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> dict:
+    state = chapter_service.get_chapter_workbench_state(db=db, project_id=project_id, chapter_no=chapter_no)
+    return success_response(data=state.model_dump(mode="json"), message="章节工作台恢复状态获取成功")
+
+
 @router.post("/blueprints/generate")
 def generate_blueprints(request: GenerateBlueprintsRequest, db: Session = Depends(get_db)) -> dict:
     blueprints = [item.model_dump(mode="json") for item in chapter_service.generate_blueprints(db=db, request=request)]
@@ -129,4 +135,3 @@ def run_post_publish_updates(published_chapter_id: str, request: RunDerivedUpdat
 def get_post_publish_updates(published_chapter_id: str, project_id: str, db: Session = Depends(get_db)) -> dict:
     result = chapter_service.get_post_publish_updates(db=db, project_id=project_id, published_chapter_id=published_chapter_id)
     return success_response(data=result.model_dump(mode="json") if result else None, message="发布后派生更新结果获取成功")
-
