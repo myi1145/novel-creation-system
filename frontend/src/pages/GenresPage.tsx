@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAsync } from '../features/useAsync';
 
@@ -10,6 +11,7 @@ export function GenresPage() {
   const [fileName, setFileName] = useState('');
   const [feedback, setFeedback] = useState('');
   const [errorFeedback, setErrorFeedback] = useState('');
+  const [isLoadingGenre, setIsLoadingGenre] = useState(false);
 
   useEffect(() => {
     void genres.run(() => api.listGenres());
@@ -17,6 +19,8 @@ export function GenresPage() {
 
   const onLoad = async (e: FormEvent) => {
     e.preventDefault();
+    if (isLoadingGenre) return;
+    setIsLoadingGenre(true);
     setFeedback('');
     setErrorFeedback('');
     try {
@@ -24,7 +28,15 @@ export function GenresPage() {
       setFeedback(`题材档案已导入配置库：${loaded.genre_name}（${loaded.genre_id}）`);
       void genres.run(() => api.listGenres());
     } catch (err) {
-      setErrorFeedback(err instanceof Error ? err.message : '导入失败');
+      if (err instanceof ApiError && err.status === 404) {
+        setErrorFeedback('导入题材失败：找不到对应档案文件，请确认 file_name 与后端可访问目录。');
+      } else if (err instanceof ApiError && err.status === 422) {
+        setErrorFeedback('导入题材失败：参数不符合要求，请检查 file_name 格式。');
+      } else {
+        setErrorFeedback(err instanceof Error ? err.message : '导入失败');
+      }
+    } finally {
+      setIsLoadingGenre(false);
     }
   };
 
@@ -36,7 +48,7 @@ export function GenresPage() {
 
       <form onSubmit={onLoad} className="panel">
         <input value={fileName} onChange={(e) => setFileName(e.target.value)} placeholder="genre file_name" required />
-        <button>导入题材档案</button>
+        <button disabled={isLoadingGenre}>{isLoadingGenre ? '导入中...' : '导入题材档案'}</button>
       </form>
       {feedback && <ActionSuccess text={feedback} />} {errorFeedback && <ActionFailure text={errorFeedback} />}
 

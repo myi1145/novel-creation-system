@@ -59,6 +59,9 @@ export function WorkbenchPage() {
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [isRevisingDraft, setIsRevisingDraft] = useState(false);
+  const [isCreatingGoal, setIsCreatingGoal] = useState(false);
+  const [isGeneratingBlueprint, setIsGeneratingBlueprint] = useState(false);
+  const [isSelectingBlueprint, setIsSelectingBlueprint] = useState(false);
   const [lastAction, setLastAction] = useState('');
   const [lastActionResultSummary, setLastActionResultSummary] = useState('');
   const [lastActionError, setLastActionError] = useState('');
@@ -71,6 +74,7 @@ export function WorkbenchPage() {
 
   const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
   const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
+  const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -265,6 +269,8 @@ export function WorkbenchPage() {
   };
 
   const createGoal = async () => {
+    if (isCreatingGoal) return;
+    setIsCreatingGoal(true);
     setFeedback('');
     setError('');
     setLastActionError('');
@@ -289,21 +295,30 @@ export function WorkbenchPage() {
       }
       setChapterExistsHint(`当前第 ${chapterNo} 章目标已存在，不能重复创建。`);
       await restoreCurrentChapter('auto');
+    } finally {
+      setIsCreatingGoal(false);
     }
   };
 
-  const genBlueprint = () =>
-    run(async () => {
+  const genBlueprint = () => {
+    if (isGeneratingBlueprint) return;
+    setIsGeneratingBlueprint(true);
+    void run(async () => {
       const generated = await api.generateBlueprints({ project_id: projectId, chapter_goal_id: goalId, candidate_count: 3 });
       const all = await api.listBlueprints(projectId, goalId);
       const candidates = all.length > 0 ? all : generated;
       setBlueprintCandidates(candidates);
       setBlueprintSource(all.length > 0 ? 'api' : 'cache');
       return { generated_count: generated.length, loaded_count: candidates.length, candidates };
-    }, '蓝图候选已生成并加载');
+    }, '蓝图候选已生成并加载').finally(() => {
+      setIsGeneratingBlueprint(false);
+    });
+  };
 
   const chooseBlueprint = (e: FormEvent) => {
     e.preventDefault();
+    if (isSelectingBlueprint) return;
+    setIsSelectingBlueprint(true);
     void run(
       async () =>
         api.selectBlueprint({
@@ -313,7 +328,9 @@ export function WorkbenchPage() {
           selection_reason: 'Workbench 页面选择',
         }),
       '蓝图已选择',
-    );
+    ).finally(() => {
+      setIsSelectingBlueprint(false);
+    });
   };
 
   const selectCandidateInUi = (candidateId: string) => {
@@ -363,6 +380,9 @@ export function WorkbenchPage() {
         try {
           const d = await api.generateDraft({ project_id: projectId, blueprint_id: blueprintId, scene_ids: sceneIds });
           setDraftId(d.id);
+          if (d.id) {
+            window.localStorage.setItem(lastDraftStorageKey, String(d.id));
+          }
           const summary = String(d.summary || d.abstract || d.content_preview || '').trim();
           setLastDraftPayload({
             draft_id: String(d.id || '-'),
@@ -398,6 +418,9 @@ export function WorkbenchPage() {
           const revisedDraftId = String(revised.id || draftId);
           const revisedSummary = String(revised.summary || revised.abstract || revised.content_preview || '').trim();
           setDraftId(revisedDraftId);
+          if (revisedDraftId) {
+            window.localStorage.setItem(lastDraftStorageKey, revisedDraftId);
+          }
           setLastRevisedDraftPayload({
             draft_id: revisedDraftId,
             status: String(revised.status || '-'),
@@ -430,16 +453,18 @@ export function WorkbenchPage() {
           章节号
           <input type="number" value={chapterNo} onChange={(e) => setChapterNo(Number(e.target.value))} />
         </label>
-        <button onClick={() => void createGoal()}>1) 创建目标</button>
+        <button onClick={() => void createGoal()} disabled={isCreatingGoal}>
+          {isCreatingGoal ? '1) 创建目标中…' : '1) 创建目标'}
+        </button>
         <button onClick={() => void restoreCurrentChapter('manual')} disabled={isRehydratingChapter}>
           {isRehydratingChapter ? '读取当前章已有内容中…' : '读取当前章已有内容'}
         </button>
-        <button onClick={genBlueprint} disabled={!goalId}>
-          2) 生成蓝图候选
+        <button onClick={genBlueprint} disabled={!goalId || isGeneratingBlueprint}>
+          {isGeneratingBlueprint ? '2) 生成蓝图候选中…' : '2) 生成蓝图候选'}
         </button>
         <form onSubmit={chooseBlueprint}>
           <input placeholder="blueprint_id" value={blueprintId} onChange={(e) => setBlueprintId(e.target.value)} required />
-          <button>3) 选择蓝图</button>
+          <button disabled={isSelectingBlueprint}>{isSelectingBlueprint ? '3) 选择蓝图中…' : '3) 选择蓝图'}</button>
         </form>
         <button onClick={decompose} disabled={!blueprintId || isDecomposing}>
           {isDecomposing ? '4) 场景拆解执行中…' : '4) 场景拆解'}

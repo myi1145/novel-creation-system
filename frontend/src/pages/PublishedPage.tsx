@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
@@ -72,8 +72,22 @@ export function PublishedPage() {
   const [isRefreshingRecords, setIsRefreshingRecords] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isLoadingLatestSummary, setIsLoadingLatestSummary] = useState(false);
+  const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
+  const lastPublishedStorageKey = useMemo(() => `published:${projectId}:lastPublishedChapterId`, [projectId]);
 
   const publishedList = useMemo(() => normalizePublishedList(published), [published]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const cachedPublishedId = window.localStorage.getItem(lastPublishedStorageKey);
+    if (cachedPublishedId) {
+      setPublishedId(cachedPublishedId);
+    }
+    const cachedDraftId = window.localStorage.getItem(lastDraftStorageKey);
+    if (cachedDraftId) {
+      setDraftId(cachedDraftId);
+    }
+  }, [lastDraftStorageKey, lastPublishedStorageKey, projectId]);
 
   const run = async (action: () => Promise<void>, message: string, actionLabel: string, suggestion?: string) => {
     setFeedback('');
@@ -101,6 +115,7 @@ export function PublishedPage() {
       if (idOverride) {
         setPublishedId(finalPublishedId);
       }
+      window.localStorage.setItem(lastPublishedStorageKey, finalPublishedId);
       const result = await api.getSummary(projectId, finalPublishedId);
       setSummary(result);
       setFeedback('已加载单章摘要');
@@ -118,7 +133,7 @@ export function PublishedPage() {
   };
 
   return <div><h2>已发布章节 / 摘要</h2>
-    <div className="panel"><input value={draftId} onChange={(e)=>setDraftId(e.target.value)} placeholder="draft_id"/><button disabled={isPublishing} onClick={()=>void (async()=>{ if (isPublishing) return; setIsPublishing(true); try { await run(async()=>{ const result = await api.publishDraft({project_id:projectId,draft_id:draftId,published_by:'frontend_user'}); setPublishResult(result); const id = getPublishedChapterIdFromPublishResult(result); if (id) { setPublishedId(id); setFeedback(`已发布，并自动带入 published_chapter_id：${id}`); } },'已发布','发布章节','请检查草稿是否完成必要前置步骤。'); } finally { setIsPublishing(false); } })()}>{isPublishing ? '发布中...' : '发布'}</button></div>
+    <div className="panel"><input value={draftId} onChange={(e)=>setDraftId(e.target.value)} placeholder="draft_id"/><button disabled={isPublishing} onClick={()=>void (async()=>{ if (isPublishing) return; setIsPublishing(true); try { await run(async()=>{ const normalizedDraftId = draftId.trim(); const result = await api.publishDraft({project_id:projectId,draft_id:normalizedDraftId,published_by:'frontend_user'}); setPublishResult(result); if (normalizedDraftId) { window.localStorage.setItem(lastDraftStorageKey, normalizedDraftId); } const id = getPublishedChapterIdFromPublishResult(result); if (id) { setPublishedId(id); window.localStorage.setItem(lastPublishedStorageKey, id); setFeedback(`已发布，并自动带入 published_chapter_id：${id}`); } },'已发布','发布章节','请检查草稿是否完成必要前置步骤。'); } finally { setIsPublishing(false); } })()}>{isPublishing ? '发布中...' : '发布'}</button></div>
     <div className="panel"><button disabled={isRefreshingPublished} onClick={()=>void (async()=>{ if (isRefreshingPublished) return; setIsRefreshingPublished(true); try { await run(async()=>setPublished(await api.listPublished(projectId)),'已加载已发布章节','刷新已发布章节'); } finally { setIsRefreshingPublished(false); } })()}>{isRefreshingPublished ? '加载中...' : '刷新已发布章节'}</button><button disabled={isRefreshingRecords} onClick={()=>void (async()=>{ if (isRefreshingRecords) return; setIsRefreshingRecords(true); try { await run(async()=>setRecords(await api.listPublishRecords(projectId)),'已加载发布记录','刷新发布记录'); } finally { setIsRefreshingRecords(false); } })()}>{isRefreshingRecords ? '加载中...' : '刷新发布记录'}</button></div>
     <div className="panel"><input value={publishedId} onChange={(e)=>setPublishedId(e.target.value)} placeholder="published_chapter_id"/><button disabled={isSummarizing} onClick={()=>void handleGetSummary()}>{isSummarizing ? '加载中...' : '查看单章摘要'}</button><button disabled={isLoadingLatestSummary} onClick={()=>void (async()=>{ if (isLoadingLatestSummary) return; setIsLoadingLatestSummary(true); try { await run(async()=>setLatestSummary(await api.getLatestSummary(projectId)),'已加载 latest summary','查看 latest summary'); } finally { setIsLoadingLatestSummary(false); } })()}>{isLoadingLatestSummary ? '加载中...' : '查看 latest summary'}</button></div>
     <div className="panel"><small>提示：查看单章摘要需要 published_chapter_id；查看 latest summary 直接按项目获取最新摘要，不依赖手填单章 ID。</small></div>
@@ -134,7 +149,7 @@ export function PublishedPage() {
                 {item.title ? ` | title: ${item.title}` : ''}
                 {item.publishedAt ? ` | published_at: ${item.publishedAt}` : ''}
               </div>
-              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); setFeedback(`已带入 published_chapter_id：${item.publishedChapterId}`); setError(''); }}>使用此 ID</button>
+              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); window.localStorage.setItem(lastPublishedStorageKey, item.publishedChapterId); setFeedback(`已带入 published_chapter_id：${item.publishedChapterId}`); setError(''); }}>使用此 ID</button>
               <button type="button" disabled={isSummarizing} onClick={()=>void handleGetSummary(item.publishedChapterId)}>查看摘要</button>
             </li>
           ))}
