@@ -31,10 +31,10 @@
 ## Current stage docs（任务前优先阅读）
 在遵循上述 V1 文档顺序的基础上，进行当前阶段任务前请优先补充阅读：
 1. md/status/current_stage_handoff.md
-2. md/next_stage_decision_scene_revision/00_场景级人工修订候选方向与问题定义.md
-3. md/next_stage_decision_scene_revision/01_场景级人工修订方向确认.md
-4. md/next_stage_decision_scene_revision/02_场景级人工修订阶段目标与边界.md
-5. md/next_stage_decision_scene_revision/03_场景级人工修订MVP范围.md
-6. md/next_stage_decision_scene_revision/04_场景级人工修订任务拆解与轮次规划.md
+2. md/next_stage_decision_dependency_recompute/00_下游依赖失效与重跑治理候选方向与问题定义.md
+3. md/next_stage_decision_dependency_recompute/01_下游依赖失效与重跑治理方向确认.md
+4. md/next_stage_decision_dependency_recompute/02_下游依赖失效与重跑治理阶段目标与边界.md
+5. md/next_stage_decision_dependency_recompute/03_下游依赖失效与重跑治理MVP范围.md
+6. md/next_stage_decision_dependency_recompute/04_下游依赖失效与重跑治理任务拆解与轮次规划.md
 
-> 历史参考：文本级人工修订闭环阶段决策链保留在 `md/next_stage_decision/`，蓝图级人工修订阶段决策链保留在 `md/next_stage_decision_blueprint_revision/`，均用于追溯，不作为当前阶段主入口。
+> 历史参考：文本级人工修订闭环阶段决策链保留在 `md/next_stage_decision/`，蓝图级人工修订阶段决策链保留在 `md/next_stage_decision_blueprint_revision/`，场景级人工修订阶段决策链保留在 `md/next_stage_decision_scene_revision/`，均用于追溯，不作为当前阶段主入口。
