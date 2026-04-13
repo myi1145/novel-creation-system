@@ -571,6 +571,13 @@ export function WorkbenchPage() {
             <div>scene 数量：{lastScenesPayload.scene_count}</div>
             <div>scene_ids：{lastScenesPayload.scene_ids.join('，') || '-'}</div>
             <div>场景标题样例：{lastScenesPayload.sample_titles.join('；') || '-'}</div>
+            <div>
+              {lastScenesPayload.scene_ids.map((sceneId) => (
+                <Link key={sceneId} to={`/projects/${projectId}/scenes/${sceneId}/edit`} style={{ marginRight: 8 }}>
+                  编辑场景 {sceneId}
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -611,6 +618,7 @@ export function WorkbenchPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
           {blueprintId ? <Link to={`/projects/${projectId}/blueprints/${blueprintId}/edit`}>进入人工修订（编辑蓝图）</Link> : null}
+          {sceneIds[0] ? <Link to={`/projects/${projectId}/scenes/${sceneIds[0]}/edit`}>进入人工修订（编辑场景）</Link> : null}
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}
           <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
           <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>

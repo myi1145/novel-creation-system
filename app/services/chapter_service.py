@@ -34,9 +34,11 @@ from app.schemas.chapter import (
     GenerateDraftRequest,
     ManualEditBlueprintRequest,
     ManualEditDraftRequest,
+    ManualEditSceneRequest,
     PublishedChapter,
     PublishRecord,
     ReviseDraftRequest,
+    SceneStateTransition,
     SceneCard,
     SelectBlueprintRequest,
 )
@@ -108,6 +110,25 @@ def _to_scene_schema(entity: SceneCardORM) -> SceneCard:
     return SceneCard.model_validate(entity).model_copy(update={"source_type": "planner_agent", "source_ref": entity.blueprint_id})
 
 
+def _build_scene_metadata(db: Session, scene: SceneCardORM) -> dict:
+    rows = (
+        db.query(ImmutableLogORM)
+        .filter(
+            ImmutableLogORM.project_id == scene.project_id,
+            ImmutableLogORM.event_type == "chapter_scene_human_edited",
+        )
+        .order_by(ImmutableLogORM.created_at.desc())
+        .all()
+    )
+    log_row = next((row for row in rows if (row.event_payload or {}).get("scene_id") == scene.id), None)
+    if log_row is None:
+        return {}
+    payload = dict(log_row.event_payload or {})
+    payload.setdefault("source_type", "human_edited")
+    payload.setdefault("edited_at", log_row.created_at.isoformat())
+    return payload
+
+
 
 def _to_published_chapter_schema(entity: PublishedChapterORM) -> PublishedChapter:
     return PublishedChapter.model_validate(entity).model_copy(update={"source_type": "publish_service", "source_ref": entity.changeset_id})
@@ -119,6 +140,14 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
 
 
 class ChapterService:
+    def get_scene(self, db: Session, project_id: str, scene_id: str) -> SceneCard:
+        scene = db.get(SceneCardORM, scene_id)
+        if scene is None or scene.project_id != project_id:
+            raise NotFoundError("场景卡不存在")
+        schema = _to_scene_schema(scene)
+        metadata = _build_scene_metadata(db=db, scene=scene)
+        return schema.model_copy(update={"extension_fields": {**schema.extension_fields, **metadata}})
+
     def get_blueprint(self, db: Session, project_id: str, blueprint_id: str) -> ChapterBlueprint:
         blueprint = db.get(ChapterBlueprintORM, blueprint_id)
         if blueprint is None or blueprint.project_id != project_id:
@@ -653,6 +682,80 @@ class ChapterService:
         scope.success("场景拆解完成", workflow_run_id=run.id, project_id=request.project_id, blueprint_id=blueprint.id, chapter_no=chapter_no, scene_count=len(scene_entities))
         return [_to_scene_schema(item) for item in scene_entities]
 
+    def manual_edit_scene(self, db: Session, scene_id: str, request: ManualEditSceneRequest) -> SceneCard:
+        scene = db.get(SceneCardORM, scene_id)
+        if scene is None or scene.project_id != request.project_id:
+            raise NotFoundError("场景卡不存在")
+        blueprint = db.get(ChapterBlueprintORM, scene.blueprint_id)
+        if blueprint is None:
+            raise NotFoundError("章节蓝图不存在")
+        if not blueprint.selected:
+            raise ConflictError("仅支持对已选定蓝图下的场景执行人工编辑")
+
+        run = workflow_run_service.ensure_run(
+            db=db,
+            project_id=request.project_id,
+            workflow_run_id=request.workflow_run_id or scene.workflow_run_id or blueprint.workflow_run_id,
+            trace_id=request.trace_id or scene.trace_id or blueprint.trace_id,
+            workflow_name="chapter_cycle_workflow_v1",
+            current_step="scene_human_edit",
+            source_type="scene_card",
+            source_ref=scene.id,
+        )
+
+        if request.scene_goal is not None:
+            scene.scene_goal = request.scene_goal.strip()
+        if request.participating_entities is not None:
+            scene.participating_entities = list(request.participating_entities)
+        if request.conflict_type is not None:
+            scene.conflict_type = request.conflict_type.strip()
+        if request.emotional_curve is not None:
+            scene.emotional_curve = request.emotional_curve.strip()
+        if request.information_delta is not None:
+            scene.information_delta = request.information_delta.strip()
+        scene.workflow_run_id = run.id
+        scene.trace_id = run.trace_id
+
+        edited_by = (request.edited_by or "human_editor").strip()
+        edited_at = datetime.now(timezone.utc)
+        audit_metadata = {
+            "edit_reason": request.edit_reason,
+            "edited_at": edited_at.isoformat(),
+            "source_type": "human_edited",
+            "edited_by": edited_by,
+            "source_ref": request.source_ref or scene.id,
+        }
+        db.add(
+            ImmutableLogORM(
+                event_type="chapter_scene_human_edited",
+                project_id=request.project_id,
+                workflow_run_id=run.id,
+                trace_id=run.trace_id,
+                event_payload={
+                    "scene_id": scene.id,
+                    "blueprint_id": scene.blueprint_id,
+                    "trigger_type": "human_edit",
+                    **audit_metadata,
+                },
+            )
+        )
+        workflow_run_service.update_progress(
+            db=db,
+            run=run,
+            current_step="scene_human_edited",
+            source_ref=scene.id,
+            status="running",
+            extra_metadata={
+                "selected_blueprint_id": scene.blueprint_id,
+                "last_edited_scene_id": scene.id,
+                **audit_metadata,
+            },
+        )
+        db.commit()
+        db.refresh(scene)
+        schema = _to_scene_schema(scene)
+        return schema.model_copy(update={"extension_fields": {**schema.extension_fields, **audit_metadata}})
+
     def generate_draft(self, db: Session, request: GenerateDraftRequest) -> ChapterDraft:
         set_log_context(project_id=request.project_id, module="chapter_service", event="generate_draft", status="started")
         blueprint = db.get(ChapterBlueprintORM, request.blueprint_id)
@@ -1125,6 +1228,39 @@ class ChapterService:
                 id=str(row.id),
                 project_id=blueprint.project_id,
                 blueprint_id=blueprint_id,
+                workflow_run_id=row.workflow_run_id,
+                trace_id=row.trace_id,
+                trigger_type=str((row.event_payload or {}).get("trigger_type") or "human_edit"),
+                trigger_ref=(row.event_payload or {}).get("edited_by"),
+                reason=(row.event_payload or {}).get("edit_reason"),
+                transition_metadata=dict(row.event_payload or {}),
+                created_at=row.created_at,
+                updated_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+    def list_scene_state_history(self, db: Session, scene_id: str, project_id: str | None = None) -> list[SceneStateTransition]:
+        scene = db.get(SceneCardORM, scene_id)
+        if scene is None:
+            raise NotFoundError("场景卡不存在")
+        if project_id and scene.project_id != project_id:
+            raise NotFoundError("场景卡不存在")
+        logs = (
+            db.query(ImmutableLogORM)
+            .filter(
+                ImmutableLogORM.project_id == scene.project_id,
+                ImmutableLogORM.event_type == "chapter_scene_human_edited",
+            )
+            .order_by(ImmutableLogORM.created_at.asc())
+            .all()
+        )
+        rows = [row for row in logs if (row.event_payload or {}).get("scene_id") == scene_id]
+        return [
+            SceneStateTransition(
+                id=str(row.id),
+                project_id=scene.project_id,
+                scene_id=scene_id,
                 workflow_run_id=row.workflow_run_id,
                 trace_id=row.trace_id,
                 trigger_type=str((row.event_payload or {}).get("trigger_type") or "human_edit"),
