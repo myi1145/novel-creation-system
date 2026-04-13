@@ -41,3 +41,11 @@ npm run build
 - 工作台蓝图候选选择在 `WorkbenchPage` 内完成，不新增后端聚合接口。
 - 题材页语义为“题材配置库管理（查看 + 导入）”，不伪装项目级题材切换。
 - ChangeSet 页在项目路由下按 `project_id` 前端过滤展示，并对缺少项目归属字段的记录做排除提示。
+
+## 文本级人工修订最小闭环（当前阶段）
+
+1. 在 `Workbench` 先生成 `draft_id`。
+2. 从 `Workbench` 或 `Gates` 进入 `/projects/:projectId/drafts/:draftId/edit`。
+3. 编辑 `draft.content` 并填写 `edit_reason` 后保存（后端会写入 `metadata.edit_reason / edited_at / source_type=human_edited`）。
+4. 保存成功后回到 `Gates` 重新审查同一个 draft。
+5. 继续在 `Changesets` 页面从 draft 生成提议并审批/应用，再到 `Published` 页面发布。
