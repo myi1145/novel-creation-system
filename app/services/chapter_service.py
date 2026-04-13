@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,7 @@ from app.schemas.chapter import (
     ChapterBlueprint,
     ChapterBlueprintStateTransition,
     ChapterDraft,
+    ChapterDependencyStatusResponse,
     ChapterGoal,
     ChapterWorkbenchState,
     ChapterStateTransition,
@@ -35,6 +37,9 @@ from app.schemas.chapter import (
     ManualEditBlueprintRequest,
     ManualEditDraftRequest,
     ManualEditSceneRequest,
+    RecomputeDependenciesRequest,
+    RecomputeDependenciesResponse,
+    DependencyStaleItem,
     PublishedChapter,
     PublishRecord,
     ReviseDraftRequest,
@@ -139,7 +144,146 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
     return PublishRecord.model_validate(entity).model_copy(update={"source_type": "publish_service", "source_ref": entity.published_chapter_id})
 
 
+def _build_stale_key(payload: dict) -> str:
+    return "|".join(
+        [
+            str(payload.get("project_id") or ""),
+            str(payload.get("chapter_no") or ""),
+            str(payload.get("source_type") or ""),
+            str(payload.get("source_id") or ""),
+            str(payload.get("affected_type") or ""),
+            str(payload.get("affected_id") or ""),
+            str(payload.get("affected_scope") or ""),
+        ]
+    )
+
+
 class ChapterService:
+    def _resolve_chapter_context(
+        self,
+        db: Session,
+        *,
+        project_id: str,
+        chapter_no: int | None = None,
+        blueprint_id: str | None = None,
+        scene_id: str | None = None,
+    ) -> tuple[int | None, ChapterBlueprintORM | None]:
+        if chapter_no is not None:
+            goal = (
+                db.query(ChapterGoalORM)
+                .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+                .first()
+            )
+            if goal is None:
+                return None, None
+            blueprint = (
+                db.query(ChapterBlueprintORM)
+                .filter(
+                    ChapterBlueprintORM.project_id == project_id,
+                    ChapterBlueprintORM.chapter_goal_id == goal.id,
+                    ChapterBlueprintORM.selected.is_(True),
+                )
+                .first()
+            )
+            return chapter_no, blueprint
+        if blueprint_id:
+            blueprint = db.get(ChapterBlueprintORM, blueprint_id)
+            if blueprint is None or blueprint.project_id != project_id:
+                raise NotFoundError("章节蓝图不存在")
+            goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+            return getattr(goal, "chapter_no", None), blueprint
+        if scene_id:
+            scene = db.get(SceneCardORM, scene_id)
+            if scene is None or scene.project_id != project_id:
+                raise NotFoundError("场景卡不存在")
+            blueprint = db.get(ChapterBlueprintORM, scene.blueprint_id)
+            if blueprint is None:
+                raise NotFoundError("章节蓝图不存在")
+            goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+            return getattr(goal, "chapter_no", None), blueprint
+        return None, None
+
+    def _mark_dependency_stale(
+        self,
+        db: Session,
+        *,
+        project_id: str,
+        chapter_no: int | None,
+        run_id: str | None,
+        trace_id: str | None,
+        source_type: str,
+        source_id: str,
+        reason: str,
+        affected_types: list[str],
+    ) -> None:
+        for affected_type in affected_types:
+            payload = {
+                "stale_id": str(uuid4()),
+                "project_id": project_id,
+                "chapter_no": chapter_no,
+                "source_type": source_type,
+                "source_id": source_id,
+                "affected_type": affected_type,
+                "affected_scope": f"chapter:{chapter_no}" if chapter_no is not None else "chapter:unknown",
+                "reason": reason,
+                "status": "possibly_stale",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "resolved_at": None,
+                "resolved_by": None,
+            }
+            payload["stale_key"] = _build_stale_key(payload)
+            db.add(
+                ImmutableLogORM(
+                    event_type="chapter_dependency_stale_marked",
+                    project_id=project_id,
+                    workflow_run_id=run_id,
+                    trace_id=trace_id,
+                    event_payload=payload,
+                )
+            )
+
+    def _collect_open_stale_items(self, db: Session, *, project_id: str, chapter_no: int | None = None, source_id: str | None = None) -> list[DependencyStaleItem]:
+        rows = (
+            db.query(ImmutableLogORM)
+            .filter(
+                ImmutableLogORM.project_id == project_id,
+                ImmutableLogORM.event_type.in_(["chapter_dependency_stale_marked", "chapter_dependency_stale_resolved"]),
+            )
+            .order_by(ImmutableLogORM.created_at.asc(), ImmutableLogORM.id.asc())
+            .all()
+        )
+        active: dict[str, DependencyStaleItem] = {}
+        for row in rows:
+            payload = dict(row.event_payload or {})
+            stale_key = str(payload.get("stale_key") or _build_stale_key(payload))
+            if row.event_type == "chapter_dependency_stale_marked":
+                item = DependencyStaleItem(
+                    stale_id=str(payload.get("stale_id") or stale_key),
+                    project_id=project_id,
+                    chapter_no=payload.get("chapter_no"),
+                    source_type=str(payload.get("source_type") or ""),
+                    source_id=str(payload.get("source_id") or ""),
+                    affected_type=str(payload.get("affected_type") or ""),
+                    affected_id=payload.get("affected_id"),
+                    affected_scope=payload.get("affected_scope"),
+                    reason=str(payload.get("reason") or "上游人工修订导致下游结果可能过期"),
+                    status=str(payload.get("status") or "possibly_stale"),
+                    created_at=row.created_at,
+                    resolved_at=None,
+                    resolved_by=None,
+                    metadata=payload,
+                )
+                active[stale_key] = item
+            elif stale_key in active:
+                if payload.get("status") in {"recomputed", "dismissed"}:
+                    del active[stale_key]
+        items = list(active.values())
+        if chapter_no is not None:
+            items = [item for item in items if item.chapter_no == chapter_no]
+        if source_id is not None:
+            items = [item for item in items if item.source_id == source_id]
+        return items
+
     def get_scene(self, db: Session, project_id: str, scene_id: str) -> SceneCard:
         scene = db.get(SceneCardORM, scene_id)
         if scene is None or scene.project_id != project_id:
@@ -454,6 +598,18 @@ class ChapterService:
                 },
             )
         )
+        goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+        self._mark_dependency_stale(
+            db=db,
+            project_id=request.project_id,
+            chapter_no=getattr(goal, "chapter_no", None),
+            run_id=run.id,
+            trace_id=run.trace_id,
+            source_type="blueprint",
+            source_id=blueprint.id,
+            reason="ChapterBlueprint 已人工修订，下游 Scene/Draft/Gate/ChangeSet/Publish 结果可能过期",
+            affected_types=["scenes", "draft", "gate", "changeset", "publish"],
+        )
         workflow_run_service.update_progress(
             db=db,
             run=run,
@@ -738,6 +894,18 @@ class ChapterService:
                     **audit_metadata,
                 },
             )
+        )
+        goal = db.get(ChapterGoalORM, blueprint.chapter_goal_id)
+        self._mark_dependency_stale(
+            db=db,
+            project_id=request.project_id,
+            chapter_no=getattr(goal, "chapter_no", None),
+            run_id=run.id,
+            trace_id=run.trace_id,
+            source_type="scene",
+            source_id=scene.id,
+            reason="SceneCard 已人工修订，下游 Draft/Gate/ChangeSet/Publish 结果可能过期",
+            affected_types=["draft", "gate", "changeset", "publish"],
         )
         workflow_run_service.update_progress(
             db=db,
@@ -1272,6 +1440,102 @@ class ChapterService:
             )
             for row in rows
         ]
+
+    def get_dependency_status(
+        self,
+        db: Session,
+        *,
+        project_id: str,
+        chapter_no: int | None = None,
+        blueprint_id: str | None = None,
+        scene_id: str | None = None,
+    ) -> ChapterDependencyStatusResponse:
+        resolved_chapter_no, _ = self._resolve_chapter_context(
+            db=db,
+            project_id=project_id,
+            chapter_no=chapter_no,
+            blueprint_id=blueprint_id,
+            scene_id=scene_id,
+        )
+        source_id = scene_id or blueprint_id
+        items = self._collect_open_stale_items(db=db, project_id=project_id, chapter_no=resolved_chapter_no, source_id=source_id)
+        return ChapterDependencyStatusResponse(project_id=project_id, chapter_no=resolved_chapter_no, items=items)
+
+    def recompute_dependencies(self, db: Session, request: RecomputeDependenciesRequest) -> RecomputeDependenciesResponse:
+        resolved_chapter_no, selected_blueprint = self._resolve_chapter_context(
+            db=db,
+            project_id=request.project_id,
+            chapter_no=request.chapter_no,
+            blueprint_id=request.blueprint_id,
+            scene_id=request.scene_id,
+        )
+        if selected_blueprint is None:
+            raise NotFoundError("未找到可重跑的已选蓝图")
+        open_items = self._collect_open_stale_items(
+            db=db,
+            project_id=request.project_id,
+            chapter_no=resolved_chapter_no,
+            source_id=request.source_id or request.scene_id or request.blueprint_id,
+        )
+        if not open_items:
+            raise ConflictError("当前无待处理的下游可能过期状态")
+
+        recompute_result: dict[str, object] = {}
+        if request.action == "recompute_scenes":
+            scenes = self.decompose_scenes(
+                db=db,
+                request=DecomposeScenesRequest(
+                    project_id=request.project_id,
+                    blueprint_id=selected_blueprint.id,
+                ),
+            )
+            recompute_result = {"scene_count": len(scenes), "scene_ids": [item.id for item in scenes]}
+        elif request.action == "recompute_draft":
+            scene_ids = [request.scene_id] if request.scene_id else []
+            draft = self.generate_draft(
+                db=db,
+                request=GenerateDraftRequest(
+                    project_id=request.project_id,
+                    blueprint_id=selected_blueprint.id,
+                    scene_ids=scene_ids,
+                ),
+            )
+            recompute_result = {"draft_id": draft.id, "status": draft.status}
+
+        resolved_stale_ids: list[str] = []
+        now = datetime.now(timezone.utc).isoformat()
+        for item in open_items:
+            if request.action == "recompute_scenes" and item.affected_type != "scenes":
+                continue
+            if request.action == "recompute_draft" and item.affected_type not in {"draft", "gate", "changeset", "publish"}:
+                continue
+            resolved_stale_ids.append(item.stale_id)
+            payload = {
+                **item.metadata,
+                "stale_id": item.stale_id,
+                "stale_key": item.metadata.get("stale_key") or _build_stale_key(item.metadata),
+                "status": "recomputed",
+                "resolved_at": now,
+                "resolved_by": request.confirmed_by,
+                "recompute_action": request.action,
+            }
+            db.add(
+                ImmutableLogORM(
+                    event_type="chapter_dependency_stale_resolved",
+                    project_id=request.project_id,
+                    workflow_run_id=None,
+                    trace_id=None,
+                    event_payload=payload,
+                )
+            )
+        db.commit()
+        return RecomputeDependenciesResponse(
+            project_id=request.project_id,
+            chapter_no=resolved_chapter_no,
+            action=request.action,
+            recompute_result=recompute_result,
+            resolved_stale_ids=resolved_stale_ids,
+        )
 
     def run_post_publish_updates(self, db: Session, request: RunDerivedUpdatesRequest) -> DerivedUpdateBatchResult:
         return derived_update_service.run_post_publish_updates(db=db, request=request, commit=True)

@@ -31,6 +31,8 @@ export function SceneEditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draftId, setDraftId] = useState('');
+  const [dependencyItems, setDependencyItems] = useState<Record<string, unknown>[]>([]);
+  const [isRecomputing, setIsRecomputing] = useState(false);
   const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
 
   const load = async () => {
@@ -46,10 +48,36 @@ export function SceneEditorPage() {
       setInformationDelta(String(scene.information_delta || ''));
       setBlueprintId(String(scene.blueprint_id || ''));
       setHistory(stateHistory);
+      const dependency = await api.getDependencyStatus({ project_id: projectId, scene_id: sceneId });
+      setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '读取场景失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const recomputeDraft = async () => {
+    if (isRecomputing) return;
+    setIsRecomputing(true);
+    setFeedback('');
+    setError('');
+    try {
+      await api.recomputeDependencies({
+        project_id: projectId,
+        scene_id: sceneId,
+        source_type: 'scene',
+        source_id: sceneId,
+        action: 'recompute_draft',
+        confirmed_by: 'frontend_user',
+      });
+      const dependency = await api.getDependencyStatus({ project_id: projectId, scene_id: sceneId });
+      setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
+      setFeedback('已确认重跑草稿生成。');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '重跑失败');
+    } finally {
+      setIsRecomputing(false);
     }
   };
 
@@ -147,6 +175,23 @@ export function SceneEditorPage() {
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明为什么编辑该场景" />
         </label>
         <button onClick={() => void onSave()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存场景人工修订'}</button>
+      </div>
+
+      <div className="panel">
+        <h3>下游可能过期提示</h3>
+        {dependencyItems.length === 0 ? <div>当前场景暂无下游过期项。</div> : (
+          <ul>
+            {dependencyItems.map((item) => (
+              <li key={String(item.stale_id || Math.random())}>
+                影响={String(item.affected_type || '-')} / 原因={String(item.reason || '-')}
+              </li>
+            ))}
+          </ul>
+        )}
+        <button onClick={() => void recomputeDraft()} disabled={isRecomputing || dependencyItems.length === 0}>
+          {isRecomputing ? '执行中...' : '人工确认重跑草稿生成'}
+        </button>
+        <div>重跑不会自动发布，也不会自动写入 Canon。</div>
       </div>
 
       <div className="panel">

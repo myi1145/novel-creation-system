@@ -41,6 +41,14 @@ export const api = {
   manualEditScene: (sceneId: string, payload: Dict) => http.patch<SceneCard>(`/chapters/scenes/${sceneId}`, payload),
   getSceneStateHistory: (projectId: string, sceneId: string) =>
     http.get<Dict[]>(`/chapters/scenes/${sceneId}/state-history?project_id=${projectId}`),
+  getDependencyStatus: (payload: { project_id: string; chapter_no?: number; blueprint_id?: string; scene_id?: string }) => {
+    const query = new URLSearchParams({ project_id: payload.project_id });
+    if (typeof payload.chapter_no === 'number') query.set('chapter_no', String(payload.chapter_no));
+    if (payload.blueprint_id) query.set('blueprint_id', payload.blueprint_id);
+    if (payload.scene_id) query.set('scene_id', payload.scene_id);
+    return http.get<Dict>(`/chapters/dependency-status?${query.toString()}`);
+  },
+  recomputeDependencies: (payload: Dict) => http.post<Dict>('/chapters/dependency-status/recompute', payload),
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),
   getDraft: (projectId: string, draftId: string) => http.get<ChapterDraft>(`/chapters/drafts/${draftId}?project_id=${projectId}`),
