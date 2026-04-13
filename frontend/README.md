@@ -45,7 +45,9 @@ npm run build
 ## 文本级人工修订最小闭环（当前阶段）
 
 1. 在 `Workbench` 先生成 `draft_id`。
-2. 从 `Workbench` 或 `Gates` 进入 `/projects/:projectId/drafts/:draftId/edit`。
-3. 编辑 `draft.content` 并填写 `edit_reason` 后保存（后端会写入 `metadata.edit_reason / edited_at / source_type=human_edited`）。
-4. 保存成功后回到 `Gates` 重新审查同一个 draft。
-5. 继续在 `Changesets` 页面从 draft 生成提议并审批/应用，再到 `Published` 页面发布。
+2. 从 `Workbench` 或 `Gates` 点击统一入口「进入人工修订（编辑草稿）」进入 `/projects/:projectId/drafts/:draftId/edit`。
+3. 编辑 `draft.content` 并填写 `edit_reason` 后保存（建议写清“改了什么、为什么改”，后端会写入 `metadata.edit_reason / edited_at / source_type=human_edited`）。
+4. 保存成功后按页面引导先回到 `Gates` 重新审查同一个 draft。
+5. 审查通过后继续在 `Changesets` 页面从 draft 生成提议并审批/应用，再到 `Published` 页面发布。
+
+> 失败提示策略：前端会优先给出可重试的产品化提示，避免直接暴露原始技术报错。

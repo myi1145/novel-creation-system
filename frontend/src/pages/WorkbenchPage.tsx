@@ -609,7 +609,7 @@ export function WorkbenchPage() {
         <h3>继续处理入口</h3>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
-          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>去人工编辑草稿</Link> : null}
+          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}
           <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
           <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
           <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
