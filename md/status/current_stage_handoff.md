@@ -8,67 +8,68 @@
 
 ## 1. 当前阶段结论
 
-**当前阶段：文本级人工修订闭环阶段（下一阶段最小产品化闭环补齐）**
+**当前阶段：蓝图级人工修订方向确认与边界立项阶段。**
 
 阶段切换说明：
-- 旧阶段“最小生产化基础收口（后段）”已完成并收口。
-- 当前阶段已正式切换至 `md/next_stage_decision/01~05` 定义的决策链口径。
-- 本阶段唯一主战场为：**文本级人工修订闭环**。
+- 上一阶段“文本级人工修订闭环”已完成并正式签收。
+- 当前阶段已从“文本级人工修订闭环实施”切换为“蓝图级人工修订立项决策”。
+- 当前主任务不再是继续扩展 `ChapterDraft` 文本级闭环能力，而是完成蓝图级人工修订的方向确认、边界定义与 MVP 规划。
 
 ---
 
-## 2. 当前阶段判断
+## 2. 阶段签收结论（文本级人工修订闭环）
 
-当前核心问题已不是“主链是否可跑”，而是“作者能否在主链内人工接管草稿并继续推进”。
+以下结论已作为签收依据成立：
+- 围绕 `ChapterDraft` 的人工编辑闭环已具备最小可用能力。
+- 人工修订后的回主链路径（Gate -> ChangeSet -> Publish）已收口。
+- 最小审计记录与状态回接语义已建立。
+- 前端最小可用体验已完成阶段性收口。
+
+签收口径：
+**文本级人工修订闭环阶段已完成并签收，不再作为当前唯一主战场。**
+
+---
+
+## 3. 当前阶段判断
+
+当前核心问题已从“草稿文本能否人工接管”转移为“蓝图层是否具备可控人工修订路径与清晰边界”。
 
 当前判断如下：
-- **已不属于**：最小生产化基础收口阶段。
-- **当前属于**：文本级人工修订闭环补齐阶段。
-- **仍未到达**：蓝图级 / 场景级人工修订、结构化设定卡扩充与平台化扩展阶段。
-
----
-
-## 3. 已完成基线（延续结论）
-
-以下能力已作为既有基线成立，不再作为当前阶段主目标：
-- 单章主链（目标 -> 蓝图 -> 场景 -> 草稿 -> Gate -> ChangeSet -> Publish）可执行。
-- 连续章节（chapter-sequence）第一轮闭环已完成。
-- Gate / ChangeSet / Publish 主链与真实 provider 验收基线已建立。
-- Alembic 迁移链路、环境分层、preflight、runbook、signoff、release registry 已形成最小生产化收口。
-
-结论：
-**当前阶段不再围绕“最小生产化基础收口”继续扩展。**
+- **已完成并签收**：文本级人工修订闭环阶段。
+- **当前属于**：蓝图级人工修订方向确认与边界立项阶段。
+- **仍未进入**：蓝图级人工修订实现阶段（含蓝图编辑器开发与代码落地）。
 
 ---
 
 ## 4. 当前不要再动的区域
 
 除非修复明确缺陷或回归，当前阶段不应将主精力投入以下区域：
-- 不扩 `chapter-cycle` / `chapter-sequence` 主链能力。
+- 不继续以 `ChapterDraft` 文本级人工修订为主功能战场扩展新能力。
 - 不改 gate / changeset / publish 核心业务语义。
-- 不做结构化设定卡扩充（如 Location / Faction / Item / Terminology）。
-- 不做蓝图级、场景级人工修订能力。
-- 不做平台化与大范围前后端重构。
+- 不改 `chapter-cycle` / `chapter-sequence` 主链核心语义。
+- 不直接启动蓝图编辑器实现或蓝图级人工修订功能开发。
+- 不并行开启场景级人工修订或结构化设定卡扩展作为当前主线。
 
 ---
 
-## 5. 当前唯一主战场
+## 5. 当前唯一主任务
 
-**文本级人工修订闭环。**
+**完成蓝图级人工修订的方向确认与边界立项。**
 
-即：围绕 `ChapterDraft` 完成“人工可编辑、可追踪、可回 Gate、可继续 ChangeSet -> Publish”的最小闭环。
+即：在不进入实现工单的前提下，形成可供后续任务引用的阶段决策链，明确“为什么先做蓝图级、做什么、不做什么、最小 MVP 与轮次规划”。
 
 ---
 
 ## 6. 下一步唯一目标（当前阶段执行口径）
 
-**补齐 `ChapterDraft` 的人工编辑、最小审计与返回 Gate -> ChangeSet -> Publish 的接线路径。**
+**建立并固化蓝图级人工修订决策文档链（00~04），作为后续实现任务的上游依据。**
 
-该目标对应 `md/next_stage_decision/05_Codex执行任务单_文本级人工修订闭环.md`，并受以下文档约束：
-- `md/next_stage_decision/01_下一阶段方向确认.md`
-- `md/next_stage_decision/02_下一阶段阶段目标与边界.md`
-- `md/next_stage_decision/03_下一阶段MVP范围.md`
-- `md/next_stage_decision/04_任务拆解与轮次规划.md`
+当前阶段约束文档位于：
+- `md/next_stage_decision_blueprint_revision/00_蓝图级人工修订候选方向与问题定义.md`
+- `md/next_stage_decision_blueprint_revision/01_蓝图级人工修订方向确认.md`
+- `md/next_stage_decision_blueprint_revision/02_蓝图级人工修订阶段目标与边界.md`
+- `md/next_stage_decision_blueprint_revision/03_蓝图级人工修订MVP范围.md`
+- `md/next_stage_decision_blueprint_revision/04_蓝图级人工修订任务拆解与轮次规划.md`
 
 ---
 
@@ -76,24 +77,24 @@
 
 新窗口任务开始前，建议最小阅读顺序：
 1. 本文件（`md/status/current_stage_handoff.md`）
-2. `md/next_stage_decision/01_下一阶段方向确认.md`
-3. `md/next_stage_decision/02_下一阶段阶段目标与边界.md`
-4. `md/next_stage_decision/03_下一阶段MVP范围.md`
-5. `md/next_stage_decision/04_任务拆解与轮次规划.md`
-6. `md/next_stage_decision/05_Codex执行任务单_文本级人工修订闭环.md`
+2. `md/next_stage_decision_blueprint_revision/00_蓝图级人工修订候选方向与问题定义.md`
+3. `md/next_stage_decision_blueprint_revision/01_蓝图级人工修订方向确认.md`
+4. `md/next_stage_decision_blueprint_revision/02_蓝图级人工修订阶段目标与边界.md`
+5. `md/next_stage_decision_blueprint_revision/03_蓝图级人工修订MVP范围.md`
+6. `md/next_stage_decision_blueprint_revision/04_蓝图级人工修订任务拆解与轮次规划.md`
 
 ---
 
 ## 8. 本文件维护约束
 
-- 本文件仅维护“当前阶段结论、边界、唯一主战场、下一步唯一目标”。
+- 本文件仅维护“当前阶段结论、边界、唯一主任务、下一步唯一目标”。
 - 不在本文件展开实现细节与工单级步骤。
 - 若阶段再次切换，必须先同步本文件，再同步 README 入口口径。
 
 ---
 
-## 9. 当前最小操作口径（文本级人工修订闭环）
+## 9. 阶段切换备注
 
-- Workbench 产出 `draft_id` 后，可进入 `/projects/:projectId/drafts/:draftId/edit` 做人工文本修订。
-- 保存时必须填写 `edit_reason`，系统会写入 `metadata.edit_reason / edited_at / source_type=human_edited`。
-- 人工保存后通过 Gate 页面重新审查同一 draft，再继续 ChangeSet 与 Publish。
+- `md/next_stage_decision/01~05` 作为“文本级人工修订闭环阶段”的历史决策链，继续保留并作为已签收阶段依据。
+- 当前阶段新增独立目录 `md/next_stage_decision_blueprint_revision/`，用于避免与上一阶段决策链混写。
+- 本阶段输出仅限立项与边界，不等价于“蓝图级人工修订已进入立即开发”。
