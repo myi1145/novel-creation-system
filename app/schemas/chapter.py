@@ -46,6 +46,9 @@ def _metadata_extension_fields(metadata: dict[str, Any]) -> dict[str, Any]:
         "prompt_template_version",
         "call_status",
         "fallback_used",
+        "edit_reason",
+        "edited_at",
+        "edited_by",
     ]
     return {key: metadata.get(key) for key in keys if metadata.get(key) is not None}
 
@@ -109,6 +112,7 @@ class ChapterBlueprint(StructuredCreativeObject):
     summary: str
     advances: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     selected: bool = False
 
     @model_validator(mode="after")
@@ -119,7 +123,33 @@ class ChapterBlueprint(StructuredCreativeObject):
         self.related_object_ids = _dedupe_ids([*self.related_object_ids, self.chapter_goal_id])
         if self.selected and "formal_blueprint" not in self.tags:
             self.tags.append("formal_blueprint")
+        self.extension_fields = {**self.extension_fields, **_metadata_extension_fields(self.metadata or {})}
         return self
+
+
+class ManualEditBlueprintRequest(BaseModel):
+    project_id: str
+    title_hint: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    advances: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    edit_reason: str = Field(min_length=1)
+    edited_by: str | None = None
+    source_ref: str | None = None
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+
+
+class BlueprintStateTransition(IdentifiedModel):
+    project_id: str
+    blueprint_id: str
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+    trigger_type: str
+    trigger_ref: str | None = None
+    reason: str | None = None
+    transition_metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
 
 
 class DecomposeScenesRequest(BaseModel):

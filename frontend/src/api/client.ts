@@ -30,7 +30,12 @@ export const api = {
   generateBlueprints: (payload: Dict) => http.post<ChapterBlueprint[]>('/chapters/blueprints/generate', payload),
   listBlueprints: (projectId: string, chapterGoalId?: string) =>
     http.get<ChapterBlueprint[]>(`/chapters/blueprints?project_id=${projectId}${chapterGoalId ? `&chapter_goal_id=${chapterGoalId}` : ''}`),
+  getBlueprint: (projectId: string, blueprintId: string) =>
+    http.get<ChapterBlueprint>(`/chapters/blueprints/${blueprintId}?project_id=${projectId}`),
   selectBlueprint: (payload: Dict) => http.post<ChapterBlueprint>('/chapters/blueprints/select', payload),
+  manualEditBlueprint: (blueprintId: string, payload: Dict) => http.post<ChapterBlueprint>(`/chapters/blueprints/${blueprintId}/manual-edit`, payload),
+  getBlueprintStateHistory: (projectId: string, blueprintId: string) =>
+    http.get<Dict[]>(`/chapters/blueprints/${blueprintId}/state-history?project_id=${projectId}`),
   decomposeScenes: (payload: Dict) => http.post<SceneCard[]>('/chapters/scenes/decompose', payload),
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),

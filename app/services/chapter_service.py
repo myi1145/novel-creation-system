@@ -21,6 +21,7 @@ from app.db.models import (
     SceneCardORM,
 )
 from app.schemas.chapter import (
+    BlueprintStateTransition,
     ChapterBlueprint,
     ChapterDraft,
     ChapterGoal,
@@ -32,6 +33,7 @@ from app.schemas.chapter import (
     GenerateChapterSummaryRequest,
     GenerateDraftRequest,
     ManualEditDraftRequest,
+    ManualEditBlueprintRequest,
     PublishedChapter,
     PublishRecord,
     ReviseDraftRequest,
@@ -79,7 +81,42 @@ def _to_goal_schema(entity: ChapterGoalORM) -> ChapterGoal:
 
 
 def _to_blueprint_schema(entity: ChapterBlueprintORM) -> ChapterBlueprint:
-    return ChapterBlueprint.model_validate(entity).model_copy(update={"source_type": "planner_agent", "source_ref": entity.chapter_goal_id})
+    metadata: dict = {}
+    if getattr(entity, "_manual_edit_metadata", None):
+        metadata = dict(getattr(entity, "_manual_edit_metadata"))
+    source_type = metadata.get("source_type") or "planner_agent"
+    source_ref = metadata.get("source_ref") or entity.chapter_goal_id
+    return ChapterBlueprint(
+        id=entity.id,
+        project_id=entity.project_id,
+        chapter_goal_id=entity.chapter_goal_id,
+        workflow_run_id=entity.workflow_run_id,
+        trace_id=entity.trace_id,
+        title_hint=entity.title_hint,
+        summary=entity.summary,
+        advances=list(entity.advances or []),
+        risks=list(entity.risks or []),
+        metadata=metadata,
+        selected=entity.selected,
+        source_type=source_type,
+        source_ref=source_ref,
+        created_at=entity.created_at,
+        updated_at=entity.updated_at,
+    )
+
+
+def _get_latest_blueprint_manual_edit_metadata(db: Session, *, project_id: str, blueprint_id: str) -> dict:
+    row = (
+        db.query(ImmutableLogORM)
+        .filter(ImmutableLogORM.event_type == "chapter_blueprint_state_changed", ImmutableLogORM.project_id == project_id)
+        .order_by(ImmutableLogORM.created_at.desc(), ImmutableLogORM.id.desc())
+        .all()
+    )
+    for item in row:
+        payload = dict(item.event_payload or {})
+        if payload.get("blueprint_id") == blueprint_id and payload.get("trigger_type") == "human_edit":
+            return dict(payload.get("metadata") or {})
+    return {}
 
 
 
@@ -98,6 +135,13 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
 
 
 class ChapterService:
+    def get_blueprint(self, db: Session, project_id: str, blueprint_id: str) -> ChapterBlueprint:
+        blueprint = db.get(ChapterBlueprintORM, blueprint_id)
+        if blueprint is None or blueprint.project_id != project_id:
+            raise NotFoundError("章蓝图不存在")
+        setattr(blueprint, "_manual_edit_metadata", _get_latest_blueprint_manual_edit_metadata(db=db, project_id=project_id, blueprint_id=blueprint_id))
+        return _to_blueprint_schema(blueprint)
+
     def get_draft(self, db: Session, project_id: str, draft_id: str) -> ChapterDraft:
         draft = db.get(ChapterDraftORM, draft_id)
         if draft is None or draft.project_id != project_id:
@@ -343,6 +387,8 @@ class ChapterService:
         if selected_only:
             query = query.filter(ChapterBlueprintORM.selected.is_(True))
         items = query.order_by(ChapterBlueprintORM.created_at.asc()).all()
+        for item in items:
+            setattr(item, "_manual_edit_metadata", _get_latest_blueprint_manual_edit_metadata(db=db, project_id=item.project_id, blueprint_id=item.id))
         return [_to_blueprint_schema(item) for item in items]
 
     def get_chapter_workbench_state(self, db: Session, project_id: str, chapter_no: int) -> ChapterWorkbenchState:
@@ -971,6 +1017,98 @@ class ChapterService:
         db.commit()
         db.refresh(draft)
         return _to_draft_schema(draft)
+
+    def manual_edit_blueprint(self, db: Session, blueprint_id: str, request: ManualEditBlueprintRequest) -> ChapterBlueprint:
+        blueprint = db.get(ChapterBlueprintORM, blueprint_id)
+        if blueprint is None or blueprint.project_id != request.project_id:
+            raise NotFoundError("章蓝图不存在")
+        if not blueprint.selected:
+            raise ConflictError("只能对已选定的正式章蓝图进行人工修订")
+
+        run = workflow_run_service.ensure_run(
+            db=db,
+            project_id=request.project_id,
+            workflow_run_id=request.workflow_run_id or blueprint.workflow_run_id,
+            trace_id=request.trace_id or blueprint.trace_id,
+            workflow_name="chapter_cycle_workflow_v1",
+            current_step="blueprint_manual_edit",
+            source_type="chapter_blueprint",
+            source_ref=blueprint.id,
+        )
+        blueprint.title_hint = request.title_hint
+        blueprint.summary = request.summary
+        blueprint.advances = request.advances
+        blueprint.risks = request.risks
+        blueprint.workflow_run_id = run.id
+        blueprint.trace_id = run.trace_id
+
+        metadata = {
+            "edit_reason": request.edit_reason,
+            "edited_at": datetime.now(timezone.utc).isoformat(),
+            "source_type": "human_edited",
+            "edited_by": request.edited_by or "human_editor",
+            "source_ref": request.source_ref or blueprint.id,
+        }
+        db.flush()
+        workflow_run_service.update_progress(
+            db=db,
+            run=run,
+            current_step="blueprint_manual_edited",
+            source_ref=blueprint.id,
+            extra_metadata={"selected_blueprint_id": blueprint.id, "edit_reason": request.edit_reason, "trigger_type": "human_edit"},
+        )
+        db.add(
+            ImmutableLogORM(
+                event_type="chapter_blueprint_state_changed",
+                project_id=request.project_id,
+                workflow_run_id=run.id,
+                trace_id=run.trace_id,
+                event_payload={
+                    "blueprint_id": blueprint.id,
+                    "trigger_type": "human_edit",
+                    "trigger_ref": request.edited_by or "human_editor",
+                    "reason": request.edit_reason,
+                    "metadata": metadata,
+                },
+            )
+        )
+        db.commit()
+        db.refresh(blueprint)
+        setattr(blueprint, "_manual_edit_metadata", metadata)
+        return _to_blueprint_schema(blueprint)
+
+    def list_blueprint_state_history(self, db: Session, blueprint_id: str, project_id: str | None = None) -> list[BlueprintStateTransition]:
+        blueprint = db.get(ChapterBlueprintORM, blueprint_id)
+        if blueprint is None:
+            raise NotFoundError("章蓝图不存在")
+        if project_id and blueprint.project_id != project_id:
+            raise NotFoundError("章蓝图不存在")
+        rows = (
+            db.query(ImmutableLogORM)
+            .filter(ImmutableLogORM.event_type == "chapter_blueprint_state_changed", ImmutableLogORM.project_id == blueprint.project_id)
+            .order_by(ImmutableLogORM.created_at.asc(), ImmutableLogORM.id.asc())
+            .all()
+        )
+        items: list[BlueprintStateTransition] = []
+        for row in rows:
+            payload = dict(row.event_payload or {})
+            if payload.get("blueprint_id") != blueprint_id:
+                continue
+            items.append(
+                BlueprintStateTransition(
+                    id=str(row.id),
+                    project_id=blueprint.project_id,
+                    blueprint_id=blueprint_id,
+                    workflow_run_id=row.workflow_run_id,
+                    trace_id=row.trace_id,
+                    trigger_type=str(payload.get("trigger_type") or "unknown"),
+                    trigger_ref=payload.get("trigger_ref"),
+                    reason=payload.get("reason"),
+                    transition_metadata=dict(payload.get("metadata") or {}),
+                    created_at=row.created_at,
+                )
+            )
+        return items
 
     def list_published_chapters(self, db: Session, project_id: str | None = None) -> list[PublishedChapter]:
         query = db.query(PublishedChapterORM)
