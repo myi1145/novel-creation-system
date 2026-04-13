@@ -43,7 +43,7 @@ export function GatesPage() {
       window.localStorage.setItem(lastDraftStorageKey, sanitizedDraftId);
       setResult(data as Record<string, unknown>);
       mergeProjectChainState(projectId, { draftId: sanitizedDraftId });
-      setFeedback('Gate 审查完成');
+      setFeedback('Gate 审查完成。若需继续人工修订，可返回草稿编辑；通过后再进入 ChangeSet。');
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
         setError('Gate 审查请求失败，请检查草稿编号后重试（参数不符合后端要求）。');
@@ -64,7 +64,7 @@ export function GatesPage() {
     </div>
     {isRunningGate && <ActionSuccess text="正在执行 Gate 审查，请稍候..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>去人工编辑草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
     <pre className="panel">{JSON.stringify(result, null, 2)}</pre>
   </div>;
 }
