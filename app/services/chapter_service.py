@@ -1457,6 +1457,8 @@ class ChapterService:
             blueprint_id=blueprint_id,
             scene_id=scene_id,
         )
+        if chapter_no is not None and resolved_chapter_no is None:
+            return ChapterDependencyStatusResponse(project_id=project_id, chapter_no=chapter_no, items=[])
         source_id = scene_id or blueprint_id
         items = self._collect_open_stale_items(db=db, project_id=project_id, chapter_no=resolved_chapter_no, source_id=source_id)
         return ChapterDependencyStatusResponse(project_id=project_id, chapter_no=resolved_chapter_no, items=items)
@@ -1482,6 +1484,8 @@ class ChapterService:
 
         recompute_result: dict[str, object] = {}
         if request.action == "recompute_scenes":
+            if not any(item.affected_type == "scenes" for item in open_items):
+                raise ConflictError("当前无待处理的场景重拆过期项，不允许执行 recompute_scenes")
             scenes = self.decompose_scenes(
                 db=db,
                 request=DecomposeScenesRequest(

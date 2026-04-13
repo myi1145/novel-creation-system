@@ -113,6 +113,54 @@ class DependencyRecomputeLoopTest(unittest.TestCase):
             200,
         )
 
+    def test_recompute_scenes_requires_scenes_stale_items(self):
+        project_id, _, _, scene_id = self._prepare_blueprint_and_scene()
+
+        scene_edit = self.client.patch(
+            f"/api/v1/chapters/scenes/{scene_id}",
+            json={"project_id": project_id, "scene_goal": "manual scene edit", "edit_reason": "手工改场景", "edited_by": "tester"},
+        )
+        self.assertEqual(scene_edit.status_code, 200)
+
+        dependency_before = self.client.get(f"/api/v1/chapters/dependency-status?project_id={project_id}&chapter_no=1")
+        self.assertEqual(dependency_before.status_code, 200)
+        items_before = dependency_before.json()["data"]["items"]
+        self.assertFalse(any(item["affected_type"] == "scenes" for item in items_before))
+
+        workbench_before = self.client.get(f"/api/v1/chapters/workbench-state?project_id={project_id}&chapter_no=1")
+        self.assertEqual(workbench_before.status_code, 200)
+        scene_ids_before = list(workbench_before.json()["data"]["scene_ids"])
+
+        recompute_scenes = self.client.post(
+            "/api/v1/chapters/dependency-status/recompute",
+            json={"project_id": project_id, "chapter_no": 1, "action": "recompute_scenes", "confirmed_by": "tester"},
+        )
+        self.assertEqual(recompute_scenes.status_code, 409)
+
+        workbench_after = self.client.get(f"/api/v1/chapters/workbench-state?project_id={project_id}&chapter_no=1")
+        self.assertEqual(workbench_after.status_code, 200)
+        self.assertEqual(workbench_after.json()["data"]["scene_ids"], scene_ids_before)
+
+        dependency_after = self.client.get(f"/api/v1/chapters/dependency-status?project_id={project_id}&chapter_no=1")
+        self.assertEqual(dependency_after.status_code, 200)
+        stale_ids_before = {item["stale_id"] for item in items_before}
+        stale_ids_after = {item["stale_id"] for item in dependency_after.json()["data"]["items"]}
+        self.assertEqual(stale_ids_after, stale_ids_before)
+
+    def test_dependency_status_keeps_chapter_filter_when_chapter_missing(self):
+        project_id, _, blueprint_id, _ = self._prepare_blueprint_and_scene()
+        blueprint_edit = self.client.patch(
+            f"/api/v1/chapters/blueprints/{blueprint_id}",
+            json={"project_id": project_id, "summary": "manual blueprint edit", "edit_reason": "手工改蓝图", "edited_by": "tester"},
+        )
+        self.assertEqual(blueprint_edit.status_code, 200)
+
+        dependency_missing = self.client.get(f"/api/v1/chapters/dependency-status?project_id={project_id}&chapter_no=999")
+        self.assertEqual(dependency_missing.status_code, 200)
+        payload = dependency_missing.json()["data"]
+        self.assertEqual(payload["chapter_no"], 999)
+        self.assertEqual(payload["items"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
