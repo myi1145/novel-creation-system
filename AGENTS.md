@@ -31,8 +31,10 @@
 ## Current stage docs（任务前优先阅读）
 在遵循上述 V1 文档顺序的基础上，进行当前阶段任务前请优先补充阅读：
 1. md/status/current_stage_handoff.md
-2. md/next_stage_decision/01_下一阶段方向确认.md
-3. md/next_stage_decision/02_下一阶段阶段目标与边界.md
-4. md/next_stage_decision/03_下一阶段MVP范围.md
-5. md/next_stage_decision/04_任务拆解与轮次规划.md
-6. md/next_stage_decision/05_Codex执行任务单_文本级人工修订闭环.md
+2. md/next_stage_decision_blueprint_revision/00_蓝图级人工修订候选方向与问题定义.md
+3. md/next_stage_decision_blueprint_revision/01_蓝图级人工修订方向确认.md
+4. md/next_stage_decision_blueprint_revision/02_蓝图级人工修订阶段目标与边界.md
+5. md/next_stage_decision_blueprint_revision/03_蓝图级人工修订MVP范围.md
+6. md/next_stage_decision_blueprint_revision/04_蓝图级人工修订任务拆解与轮次规划.md
+
+> 历史参考：文本级人工修订闭环阶段的已签收决策链仍保留在 `md/next_stage_decision/`，用于追溯，不作为当前阶段主入口。
