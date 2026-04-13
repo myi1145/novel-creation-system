@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -29,6 +31,7 @@ from app.schemas.chapter import (
     GenerateBlueprintsRequest,
     GenerateChapterSummaryRequest,
     GenerateDraftRequest,
+    ManualEditDraftRequest,
     PublishedChapter,
     PublishRecord,
     ReviseDraftRequest,
@@ -95,6 +98,12 @@ def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
 
 
 class ChapterService:
+    def get_draft(self, db: Session, project_id: str, draft_id: str) -> ChapterDraft:
+        draft = db.get(ChapterDraftORM, draft_id)
+        if draft is None or draft.project_id != project_id:
+            raise NotFoundError("正文草稿不存在")
+        return _to_draft_schema(draft)
+
     def create_goal(self, db: Session, request: CreateChapterGoalRequest) -> ChapterGoal:
         set_log_context(project_id=request.project_id, chapter_no=request.chapter_no, module="chapter_service", event="create_goal", status="started")
         scope = StepLogScope(
@@ -926,6 +935,42 @@ class ChapterService:
         db.commit()
         db.refresh(revised_draft)
         return _to_draft_schema(revised_draft)
+
+    def manual_edit_draft(self, db: Session, draft_id: str, request: ManualEditDraftRequest) -> ChapterDraft:
+        draft = db.get(ChapterDraftORM, draft_id)
+        if draft is None or draft.project_id != request.project_id:
+            raise NotFoundError("正文草稿不存在")
+        if draft.status == "published":
+            raise ConflictError("已发布草稿不允许人工编辑")
+
+        draft.content = request.content
+        metadata = dict(draft.draft_metadata or {})
+        metadata.update(
+            {
+                "edit_reason": request.edit_reason,
+                "edited_at": datetime.now(timezone.utc).isoformat(),
+                "source_type": "human_edited",
+                "edited_by": request.edited_by or "human_editor",
+                "source_ref": request.source_ref or draft.id,
+            }
+        )
+        draft.draft_metadata = metadata
+        db.flush()
+
+        chapter_state_service.transition(
+            db=db,
+            draft=draft,
+            to_status=draft.status,
+            trigger_type="human_edit",
+            trigger_ref=request.edited_by or "human_editor",
+            workflow_run_id=request.workflow_run_id or draft.workflow_run_id,
+            trace_id=request.trace_id or draft.trace_id,
+            reason=request.edit_reason,
+            metadata={"source_type": "human_edited", "edited_by": request.edited_by or "human_editor"},
+        )
+        db.commit()
+        db.refresh(draft)
+        return _to_draft_schema(draft)
 
     def list_published_chapters(self, db: Session, project_id: str | None = None) -> list[PublishedChapter]:
         query = db.query(PublishedChapterORM)

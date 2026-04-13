@@ -34,6 +34,8 @@ export const api = {
   decomposeScenes: (payload: Dict) => http.post<SceneCard[]>('/chapters/scenes/decompose', payload),
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),
+  getDraft: (projectId: string, draftId: string) => http.get<ChapterDraft>(`/chapters/drafts/${draftId}?project_id=${projectId}`),
+  manualEditDraft: (draftId: string, payload: Dict) => http.post<ChapterDraft>(`/chapters/drafts/${draftId}/manual-edit`, payload),
 
 
   listWorkflowRuns: (projectId: string) => http.get<Dict[]>(`/workflows/runs?project_id=${projectId}`),

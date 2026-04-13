@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProjectLayout } from '../components/ProjectLayout';
 import { CanonPage } from '../pages/CanonPage';
 import { ChangesetsPage } from '../pages/ChangesetsPage';
+import { DraftEditorPage } from '../pages/DraftEditorPage';
 import { GatesPage } from '../pages/GatesPage';
 import { GenresPage } from '../pages/GenresPage';
 import { ObjectsPage } from '../pages/ObjectsPage';
@@ -23,6 +24,7 @@ export function AppRouter() {
         <Route path="canon" element={<CanonPage />} />
         <Route path="objects" element={<ObjectsPage />} />
         <Route path="workbench" element={<WorkbenchPage />} />
+        <Route path="drafts/:draftId/edit" element={<DraftEditorPage />} />
         <Route path="gates" element={<GatesPage />} />
         <Route path="changesets" element={<ChangesetsPage />} />
         <Route path="published" element={<PublishedPage />} />

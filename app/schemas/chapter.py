@@ -168,6 +168,16 @@ class ReviseDraftRequest(BaseModel):
     trace_id: str | None = None
 
 
+class ManualEditDraftRequest(BaseModel):
+    project_id: str
+    content: str = Field(min_length=1)
+    edit_reason: str = Field(min_length=1)
+    edited_by: str | None = None
+    source_ref: str | None = None
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+
+
 class ChapterDraft(StructuredCreativeObject):
     object_type: str = "chapter_draft"
     project_id: str
