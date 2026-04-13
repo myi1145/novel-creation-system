@@ -41,3 +41,17 @@ npm run build
 - 工作台蓝图候选选择在 `WorkbenchPage` 内完成，不新增后端聚合接口。
 - 题材页语义为“题材配置库管理（查看 + 导入）”，不伪装项目级题材切换。
 - ChangeSet 页在项目路由下按 `project_id` 前端过滤展示，并对缺少项目归属字段的记录做排除提示。
+
+
+## 文本级人工修订闭环（最短操作路径）
+
+1. 在 Workbench 完成目标/蓝图/场景后生成 draft。
+2. 从 Workbench 或 Gate 页面进入 `/projects/:projectId/drafts/:draftId/edit`。
+3. 在草稿编辑页修改 `draft.content`，并填写必填 `edit_reason` 后保存。
+4. 保存成功后返回 Gate 页面，使用同一个 `draft_id` 重新执行审查。
+5. 审查后进入 ChangeSet 页面，从该 `draft_id` 生成提议并完成审批/应用。
+6. 最后在 Published 页面发布该 draft，继续章节摘要等后续流程。
+
+约束说明：
+- 人工编辑只更新工作态 `ChapterDraft` 与最小审计信息，不直写 Canon。
+- Canon 写入仍必须经过 ChangeSet。
