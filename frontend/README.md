@@ -26,6 +26,7 @@ npm run build
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
 - `/projects/:projectId/workbench`
+- `/projects/:projectId/drafts/:draftId/edit`
 - `/projects/:projectId/gates`
 - `/projects/:projectId/changesets`
 - `/projects/:projectId/published`

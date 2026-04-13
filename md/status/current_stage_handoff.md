@@ -89,3 +89,11 @@
 - 本文件仅维护“当前阶段结论、边界、唯一主战场、下一步唯一目标”。
 - 不在本文件展开实现细节与工单级步骤。
 - 若阶段再次切换，必须先同步本文件，再同步 README 入口口径。
+
+---
+
+## 9. 当前最小操作口径（文本级人工修订闭环）
+
+- Workbench 产出 `draft_id` 后，可进入 `/projects/:projectId/drafts/:draftId/edit` 做人工文本修订。
+- 保存时必须填写 `edit_reason`，系统会写入 `metadata.edit_reason / edited_at / source_type=human_edited`。
+- 人工保存后通过 Gate 页面重新审查同一 draft，再继续 ChangeSet 与 Publish。

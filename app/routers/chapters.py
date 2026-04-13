@@ -10,6 +10,7 @@ from app.schemas.chapter import (
     GenerateBlueprintsRequest,
     GenerateChapterSummaryRequest,
     GenerateDraftRequest,
+    ManualEditDraftRequest,
     PublishDraftRequest,
     ReviseDraftRequest,
     SelectBlueprintRequest,
@@ -69,6 +70,18 @@ def generate_draft(request: GenerateDraftRequest, db: Session = Depends(get_db))
 def revise_draft(request: ReviseDraftRequest, db: Session = Depends(get_db)) -> dict:
     draft = chapter_service.revise_draft(db=db, request=request)
     return success_response(data=draft.model_dump(mode="json"), message="章节草稿已修订")
+
+
+@router.get("/drafts/{draft_id}")
+def get_draft(draft_id: str, project_id: str, db: Session = Depends(get_db)) -> dict:
+    draft = chapter_service.get_draft(db=db, project_id=project_id, draft_id=draft_id)
+    return success_response(data=draft.model_dump(mode="json"), message="章节草稿获取成功")
+
+
+@router.post("/drafts/{draft_id}/manual-edit")
+def manual_edit_draft(draft_id: str, request: ManualEditDraftRequest, db: Session = Depends(get_db)) -> dict:
+    draft = chapter_service.manual_edit_draft(db=db, draft_id=draft_id, request=request)
+    return success_response(data=draft.model_dump(mode="json"), message="章节草稿已人工编辑")
 
 
 @router.post("/drafts/publish")

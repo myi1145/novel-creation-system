@@ -64,7 +64,7 @@ export function GatesPage() {
     </div>
     {isRunningGate && <ActionSuccess text="正在执行 Gate 审查，请稍候..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link><Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>去人工编辑草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
     <pre className="panel">{JSON.stringify(result, null, 2)}</pre>
   </div>;
 }
