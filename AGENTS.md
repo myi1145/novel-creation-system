@@ -28,3 +28,11 @@
 9. API_接口与服务边界说明_V1.md
 10. 数据库与存储设计_V1.md
 11. 字段命名与对象映射总表_V1.md
+## Current stage docs（任务前优先阅读）
+在遵循上述 V1 文档顺序的基础上，进行当前阶段任务前请优先补充阅读：
+1. md/status/current_stage_handoff.md
+2. md/next_stage_decision/01_下一阶段方向确认.md
+3. md/next_stage_decision/02_下一阶段阶段目标与边界.md
+4. md/next_stage_decision/03_下一阶段MVP范围.md
+5. md/next_stage_decision/04_任务拆解与轮次规划.md
+6. md/next_stage_decision/05_Codex执行任务单_文本级人工修订闭环.md

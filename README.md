@@ -18,6 +18,8 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 
 为避免口径漂移：README 不定义当前阶段结论，只提供执行入口与推荐顺序；阶段判断与任务边界一律以 `current_stage_handoff.md` 为准。
 
+当前仓库阶段口径已切换到 `md/next_stage_decision/` 决策链：以“文本级人工修订闭环”为当前唯一主战场，执行边界以 `01~05` 文档与 handoff 共同约束。
+
 ---
 
 ## 3. 系统定位（V1 对齐）
