@@ -12,6 +12,7 @@ from app.schemas.chapter import (
     GenerateDraftRequest,
     ManualEditBlueprintRequest,
     ManualEditDraftRequest,
+    ManualEditSceneRequest,
     PublishDraftRequest,
     ReviseDraftRequest,
     SelectBlueprintRequest,
@@ -77,6 +78,24 @@ def select_blueprint(request: SelectBlueprintRequest, db: Session = Depends(get_
 def decompose_scenes(request: DecomposeScenesRequest, db: Session = Depends(get_db)) -> dict:
     scenes = [item.model_dump(mode="json") for item in chapter_service.decompose_scenes(db=db, request=request)]
     return success_response(data=scenes, message="场景卡已生成")
+
+
+@router.get("/scenes/{scene_id}")
+def get_scene(scene_id: str, project_id: str, db: Session = Depends(get_db)) -> dict:
+    scene = chapter_service.get_scene(db=db, project_id=project_id, scene_id=scene_id)
+    return success_response(data=scene.model_dump(mode="json"), message="场景卡获取成功")
+
+
+@router.patch("/scenes/{scene_id}")
+def manual_edit_scene(scene_id: str, request: ManualEditSceneRequest, db: Session = Depends(get_db)) -> dict:
+    scene = chapter_service.manual_edit_scene(db=db, scene_id=scene_id, request=request)
+    return success_response(data=scene.model_dump(mode="json"), message="场景卡已人工编辑")
+
+
+@router.get("/scenes/{scene_id}/state-history")
+def get_scene_state_history(scene_id: str, project_id: str | None = Query(default=None), db: Session = Depends(get_db)) -> dict:
+    items = [item.model_dump(mode="json") for item in chapter_service.list_scene_state_history(db=db, scene_id=scene_id, project_id=project_id)]
+    return success_response(data=items, message="场景状态流转历史获取成功")
 
 
 @router.post("/drafts/generate")

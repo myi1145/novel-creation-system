@@ -37,6 +37,10 @@ export const api = {
     http.get<Dict[]>(`/chapters/blueprints/${blueprintId}/state-history?project_id=${projectId}`),
   selectBlueprint: (payload: Dict) => http.post<ChapterBlueprint>('/chapters/blueprints/select', payload),
   decomposeScenes: (payload: Dict) => http.post<SceneCard[]>('/chapters/scenes/decompose', payload),
+  getScene: (projectId: string, sceneId: string) => http.get<SceneCard>(`/chapters/scenes/${sceneId}?project_id=${projectId}`),
+  manualEditScene: (sceneId: string, payload: Dict) => http.patch<SceneCard>(`/chapters/scenes/${sceneId}`, payload),
+  getSceneStateHistory: (projectId: string, sceneId: string) =>
+    http.get<Dict[]>(`/chapters/scenes/${sceneId}/state-history?project_id=${projectId}`),
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),
   getDraft: (projectId: string, draftId: string) => http.get<ChapterDraft>(`/chapters/drafts/${draftId}?project_id=${projectId}`),

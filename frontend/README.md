@@ -27,6 +27,7 @@ npm run build
 - `/projects/:projectId/objects`
 - `/projects/:projectId/workbench`
 - `/projects/:projectId/blueprints/:blueprintId/edit`
+- `/projects/:projectId/scenes/:sceneId/edit`
 - `/projects/:projectId/drafts/:draftId/edit`
 - `/projects/:projectId/gates`
 - `/projects/:projectId/changesets`
@@ -60,3 +61,11 @@ npm run build
 3. 编辑 `title_hint / summary / advances / risks` 并填写必填 `edit_reason` 后保存。
 4. 保存后可在页面内直接继续执行「场景拆解」「草稿生成」，或返回 Workbench 继续主链。
 5. 生成草稿后继续进入 `Gate -> ChangeSet -> Publish` 页面，不绕过既有审核/入史规则。
+
+## 场景级人工修订最小闭环（本轮新增）
+
+1. 在 `Workbench` 先完成场景拆解并拿到 `scene_id`。
+2. 从 Workbench 点击「进入人工修订（编辑场景）」进入 `/projects/:projectId/scenes/:sceneId/edit`。
+3. 编辑 `scene_goal / participating_entities / conflict_type / emotional_curve / information_delta` 并填写必填 `edit_reason` 后保存（后端会记录 `source_type=human_edited`、`edited_at`、`edit_reason`）。
+4. 保存后点击「基于该场景继续生成草稿」，再按既有主链进入 `Gate -> ChangeSet -> Publish`。
+5. 场景修订不会直接写 Canon，仍需通过 ChangeSet 入史。

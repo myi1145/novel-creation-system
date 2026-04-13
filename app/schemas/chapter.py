@@ -129,6 +129,20 @@ class DecomposeScenesRequest(BaseModel):
     trace_id: str | None = None
 
 
+class ManualEditSceneRequest(BaseModel):
+    project_id: str
+    scene_goal: str | None = None
+    participating_entities: list[str] | None = None
+    conflict_type: str | None = None
+    emotional_curve: str | None = None
+    information_delta: str | None = None
+    edit_reason: str = Field(min_length=1)
+    edited_by: str | None = None
+    source_ref: str | None = None
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+
+
 class ManualEditBlueprintRequest(BaseModel):
     project_id: str
     title_hint: str | None = None
@@ -242,6 +256,17 @@ class ChapterStateTransition(IdentifiedModel):
 class ChapterBlueprintStateTransition(IdentifiedModel):
     project_id: str
     blueprint_id: str
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+    trigger_type: str
+    trigger_ref: str | None = None
+    reason: str | None = None
+    transition_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SceneStateTransition(IdentifiedModel):
+    project_id: str
+    scene_id: str
     workflow_run_id: str | None = None
     trace_id: str | None = None
     trigger_type: str

@@ -4,6 +4,7 @@ import { CanonPage } from '../pages/CanonPage';
 import { ChangesetsPage } from '../pages/ChangesetsPage';
 import { BlueprintEditorPage } from '../pages/BlueprintEditorPage';
 import { DraftEditorPage } from '../pages/DraftEditorPage';
+import { SceneEditorPage } from '../pages/SceneEditorPage';
 import { GatesPage } from '../pages/GatesPage';
 import { GenresPage } from '../pages/GenresPage';
 import { ObjectsPage } from '../pages/ObjectsPage';
@@ -26,6 +27,7 @@ export function AppRouter() {
         <Route path="objects" element={<ObjectsPage />} />
         <Route path="workbench" element={<WorkbenchPage />} />
         <Route path="blueprints/:blueprintId/edit" element={<BlueprintEditorPage />} />
+        <Route path="scenes/:sceneId/edit" element={<SceneEditorPage />} />
         <Route path="drafts/:draftId/edit" element={<DraftEditorPage />} />
         <Route path="gates" element={<GatesPage />} />
         <Route path="changesets" element={<ChangesetsPage />} />
