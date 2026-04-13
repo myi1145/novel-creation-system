@@ -18,7 +18,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 
 为避免口径漂移：README 不定义当前阶段结论，只提供执行入口与推荐顺序；阶段判断与任务边界一律以 `current_stage_handoff.md` 为准。
 
-当前仓库阶段口径以 handoff 为准：场景级人工修订最小闭环阶段已签收完成，当前进入下游依赖失效与重跑治理的方向确认与边界立项阶段；相关决策链位于 `md/next_stage_decision_dependency_recompute/`（00~04），并由 handoff 统一收口。
+当前仓库阶段口径以 handoff 为准：下游依赖失效与重跑治理阶段已签收完成，当前进入“发布前一致性验收 / 章节发布准入”的方向确认与边界立项阶段；相关决策链位于 `md/next_stage_decision_release_readiness/`（00~04），并由 handoff 统一收口。
 
 ---
 
