@@ -26,6 +26,7 @@ npm run build
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
 - `/projects/:projectId/workbench`
+- `/projects/:projectId/blueprints/:blueprintId/edit`
 - `/projects/:projectId/drafts/:draftId/edit`
 - `/projects/:projectId/gates`
 - `/projects/:projectId/changesets`
@@ -51,3 +52,11 @@ npm run build
 5. 审查通过后继续在 `Changesets` 页面从 draft 生成提议并审批/应用，再到 `Published` 页面发布。
 
 > 失败提示策略：前端会优先给出可重试的产品化提示，避免直接暴露原始技术报错。
+
+## 蓝图级人工修订最小闭环（本轮新增）
+
+1. 在 `Workbench` 生成并选择 `blueprint_id`。
+2. 点击「进入人工修订（编辑蓝图）」进入 `/projects/:projectId/blueprints/:blueprintId/edit`。
+3. 编辑 `title_hint / summary / advances / risks` 并填写必填 `edit_reason` 后保存。
+4. 保存后可在页面内直接继续执行「场景拆解」「草稿生成」，或返回 Workbench 继续主链。
+5. 生成草稿后继续进入 `Gate -> ChangeSet -> Publish` 页面，不绕过既有审核/入史规则。

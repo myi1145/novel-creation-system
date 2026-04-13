@@ -129,6 +129,19 @@ class DecomposeScenesRequest(BaseModel):
     trace_id: str | None = None
 
 
+class ManualEditBlueprintRequest(BaseModel):
+    project_id: str
+    title_hint: str | None = None
+    summary: str | None = None
+    advances: list[str] | None = None
+    risks: list[str] | None = None
+    edit_reason: str = Field(min_length=1)
+    edited_by: str | None = None
+    source_ref: str | None = None
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+
+
 class SceneCard(StructuredCreativeObject):
     object_type: str = "scene_card"
     project_id: str
@@ -220,6 +233,17 @@ class ChapterStateTransition(IdentifiedModel):
     trace_id: str | None = None
     from_status: ChapterStatus | None = None
     to_status: ChapterStatus
+    trigger_type: str
+    trigger_ref: str | None = None
+    reason: str | None = None
+    transition_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChapterBlueprintStateTransition(IdentifiedModel):
+    project_id: str
+    blueprint_id: str
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
     trigger_type: str
     trigger_ref: str | None = None
     reason: str | None = None
