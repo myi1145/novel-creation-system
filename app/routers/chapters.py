@@ -10,6 +10,7 @@ from app.schemas.chapter import (
     GenerateBlueprintsRequest,
     GenerateChapterSummaryRequest,
     GenerateDraftRequest,
+    ManualEditBlueprintRequest,
     ManualEditDraftRequest,
     PublishDraftRequest,
     ReviseDraftRequest,
@@ -46,6 +47,24 @@ def generate_blueprints(request: GenerateBlueprintsRequest, db: Session = Depend
 def list_blueprints(project_id: str, chapter_goal_id: str | None = Query(default=None), selected_only: bool = Query(default=False), db: Session = Depends(get_db)) -> dict:
     items = [item.model_dump(mode="json") for item in chapter_service.list_blueprints(db=db, project_id=project_id, chapter_goal_id=chapter_goal_id, selected_only=selected_only)]
     return success_response(data=items, message="章节蓝图列表获取成功")
+
+
+@router.get("/blueprints/{blueprint_id}")
+def get_blueprint(blueprint_id: str, project_id: str, db: Session = Depends(get_db)) -> dict:
+    blueprint = chapter_service.get_blueprint(db=db, project_id=project_id, blueprint_id=blueprint_id)
+    return success_response(data=blueprint.model_dump(mode="json"), message="章节蓝图获取成功")
+
+
+@router.patch("/blueprints/{blueprint_id}")
+def manual_edit_blueprint(blueprint_id: str, request: ManualEditBlueprintRequest, db: Session = Depends(get_db)) -> dict:
+    blueprint = chapter_service.manual_edit_blueprint(db=db, blueprint_id=blueprint_id, request=request)
+    return success_response(data=blueprint.model_dump(mode="json"), message="章节蓝图已人工编辑")
+
+
+@router.get("/blueprints/{blueprint_id}/state-history")
+def get_blueprint_state_history(blueprint_id: str, project_id: str | None = Query(default=None), db: Session = Depends(get_db)) -> dict:
+    items = [item.model_dump(mode="json") for item in chapter_service.list_blueprint_state_history(db=db, blueprint_id=blueprint_id, project_id=project_id)]
+    return success_response(data=items, message="蓝图状态流转历史获取成功")
 
 
 @router.post("/blueprints/select")

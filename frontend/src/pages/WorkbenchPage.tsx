@@ -546,6 +546,7 @@ export function WorkbenchPage() {
                     <div>后端 selected：{String(summary.selected)}</div>
                     <button onClick={() => setExpandedBlueprintId(isExpanded ? '' : summary.id)}>{isExpanded ? '收起详情' : '展开详情'}</button>
                     <button onClick={() => selectCandidateInUi(summary.id)}>设为当前 blueprint_id</button>
+                    <Link to={`/projects/${projectId}/blueprints/${summary.id}/edit`}>进入人工修订（编辑蓝图）</Link>
                     {isExpanded && (
                       <div className="panel">
                         <div>摘要：{summary.summary}</div>
@@ -609,6 +610,7 @@ export function WorkbenchPage() {
         <h3>继续处理入口</h3>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
+          {blueprintId ? <Link to={`/projects/${projectId}/blueprints/${blueprintId}/edit`}>进入人工修订（编辑蓝图）</Link> : null}
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}
           <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
           <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
