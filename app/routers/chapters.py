@@ -10,6 +10,7 @@ from app.schemas.chapter import (
     GenerateBlueprintsRequest,
     GenerateChapterSummaryRequest,
     GenerateDraftRequest,
+    RecomputeDependenciesRequest,
     ManualEditBlueprintRequest,
     ManualEditDraftRequest,
     ManualEditSceneRequest,
@@ -102,6 +103,30 @@ def get_scene_state_history(scene_id: str, project_id: str | None = Query(defaul
 def generate_draft(request: GenerateDraftRequest, db: Session = Depends(get_db)) -> dict:
     draft = chapter_service.generate_draft(db=db, request=request)
     return success_response(data=draft.model_dump(mode="json"), message="章节草稿已生成")
+
+
+@router.get("/dependency-status")
+def get_dependency_status(
+    project_id: str,
+    chapter_no: int | None = Query(default=None),
+    blueprint_id: str | None = Query(default=None),
+    scene_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    result = chapter_service.get_dependency_status(
+        db=db,
+        project_id=project_id,
+        chapter_no=chapter_no,
+        blueprint_id=blueprint_id,
+        scene_id=scene_id,
+    )
+    return success_response(data=result.model_dump(mode="json"), message="下游依赖状态获取成功")
+
+
+@router.post("/dependency-status/recompute")
+def recompute_dependencies(request: RecomputeDependenciesRequest, db: Session = Depends(get_db)) -> dict:
+    result = chapter_service.recompute_dependencies(db=db, request=request)
+    return success_response(data=result.model_dump(mode="json"), message="下游重跑已执行")
 
 
 @router.post("/drafts/revise")

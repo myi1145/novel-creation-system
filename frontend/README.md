@@ -69,3 +69,13 @@ npm run build
 3. 编辑 `scene_goal / participating_entities / conflict_type / emotional_curve / information_delta` 并填写必填 `edit_reason` 后保存（后端会记录 `source_type=human_edited`、`edited_at`、`edit_reason`）。
 4. 保存后点击「基于该场景继续生成草稿」，再按既有主链进入 `Gate -> ChangeSet -> Publish`。
 5. 场景修订不会直接写 Canon，仍需通过 ChangeSet 入史。
+
+## 下游依赖失效与人工确认重跑（本轮新增）
+
+1. 当 `BlueprintEditorPage` 保存蓝图人工修订后，系统会标记本章下游 `scenes / draft / gate / changeset / publish` 可能过期。
+2. 当 `SceneEditorPage` 保存场景人工修订后，系统会标记该场景下游 `draft / gate / changeset / publish` 可能过期。
+3. `WorkbenchPage`、`BlueprintEditorPage`、`SceneEditorPage` 都会显示“下游可能过期”提示，并提供人工确认重跑 CTA。
+4. 人工确认重跑后，系统复用现有接口执行：
+   - 重跑场景拆解：复用 `/chapters/scenes/decompose`
+   - 重跑草稿生成：复用 `/chapters/drafts/generate`
+5. 重跑只会更新失效状态为 `recomputed`，不会自动发布，不会绕过 Gate / ChangeSet。

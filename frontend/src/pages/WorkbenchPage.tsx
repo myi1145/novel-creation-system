@@ -74,6 +74,9 @@ export function WorkbenchPage() {
   const [expandedBlueprintId, setExpandedBlueprintId] = useState('');
   const [compareBlueprintA, setCompareBlueprintA] = useState('');
   const [compareBlueprintB, setCompareBlueprintB] = useState('');
+  const [dependencyItems, setDependencyItems] = useState<Record<string, unknown>[]>([]);
+  const [isRefreshingDependency, setIsRefreshingDependency] = useState(false);
+  const [isRecomputingDependency, setIsRecomputingDependency] = useState(false);
 
   const chapterStorageKey = useMemo(() => `workbench:${projectId}:${chapterNo}`, [chapterNo, projectId]);
   const lastChapterStorageKey = useMemo(() => `workbench:${projectId}:lastChapterNo`, [projectId]);
@@ -157,6 +160,23 @@ export function WorkbenchPage() {
       mounted = false;
     };
   }, [goalId, projectId]);
+
+  const refreshDependencyStatus = async () => {
+    if (!projectId) return;
+    setIsRefreshingDependency(true);
+    try {
+      const result = await api.getDependencyStatus({ project_id: projectId, chapter_no: chapterNo });
+      setDependencyItems(Array.isArray(result.items) ? (result.items as Record<string, unknown>[]) : []);
+    } catch {
+      setDependencyItems([]);
+    } finally {
+      setIsRefreshingDependency(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshDependencyStatus();
+  }, [chapterNo, projectId]);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setFeedback('');
@@ -250,6 +270,7 @@ export function WorkbenchPage() {
       }
       const remoteState = await api.getChapterWorkbenchState(projectId, chapterNo);
       hydrateFromApiState(remoteState);
+      await refreshDependencyStatus();
       const remoteHasData = Boolean(remoteState.goal_id || (remoteState.blueprint_candidates || []).length > 0 || (remoteState.scene_ids || []).length > 0 || remoteState.latest_draft?.id);
       if (remoteHasData) {
         setLastAction('读取当前章已有内容');
@@ -268,6 +289,22 @@ export function WorkbenchPage() {
       setError(e instanceof Error ? e.message : '读取当前章已有内容失败');
     } finally {
       setIsRehydratingChapter(false);
+    }
+  };
+
+  const recomputeDependency = async (action: 'recompute_scenes' | 'recompute_draft') => {
+    if (isRecomputingDependency || !projectId) return;
+    setIsRecomputingDependency(true);
+    setFeedback('');
+    setError('');
+    try {
+      await api.recomputeDependencies({ project_id: projectId, chapter_no: chapterNo, action, confirmed_by: 'frontend_user' });
+      await refreshDependencyStatus();
+      setFeedback(action === 'recompute_scenes' ? '已确认重跑场景拆解。' : '已确认重跑草稿生成。');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '下游重跑失败');
+    } finally {
+      setIsRecomputingDependency(false);
     }
   };
 
@@ -450,6 +487,28 @@ export function WorkbenchPage() {
     <div>
       <h2>章节工作台</h2>
       <div className="panel">步骤：{STEPS.join(' → ')}</div>
+      <div className="panel">
+        <h3>下游可能过期提示</h3>
+        <button onClick={() => void refreshDependencyStatus()} disabled={isRefreshingDependency}>
+          {isRefreshingDependency ? '刷新中...' : '刷新下游状态'}
+        </button>
+        {dependencyItems.length === 0 ? <div>当前章暂无下游可能过期项。</div> : (
+          <ul>
+            {dependencyItems.map((item) => (
+              <li key={String(item.stale_id || Math.random())}>
+                来源={String(item.source_type || '-')}，影响={String(item.affected_type || '-')}，原因={String(item.reason || '-')}
+              </li>
+            ))}
+          </ul>
+        )}
+        <button onClick={() => void recomputeDependency('recompute_scenes')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
+          {isRecomputingDependency ? '重跑中...' : '人工确认重跑：场景拆解'}
+        </button>
+        <button onClick={() => void recomputeDependency('recompute_draft')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
+          {isRecomputingDependency ? '重跑中...' : '人工确认重跑：草稿生成'}
+        </button>
+        <div>重跑不会自动发布，也不会绕过 ChangeSet。</div>
+      </div>
       <div className="panel">
         当前章摘要：chapter_no={chapterNo}，goal={goalId || '-'}，blueprint={blueprintId || '-'}，draft={draftId || '-'}
         ，scene_ids={sceneIds.length}，最近动作={lastAction || '-'}，最近结果={lastActionResultSummary || '-'}，最近错误=

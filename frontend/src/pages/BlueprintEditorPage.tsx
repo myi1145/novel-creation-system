@@ -31,6 +31,8 @@ export function BlueprintEditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [dependencyItems, setDependencyItems] = useState<Record<string, unknown>[]>([]);
+  const [isRecomputing, setIsRecomputing] = useState(false);
 
   const lastDraftStorageKey = useMemo(() => `workbench:${projectId}:lastDraftId`, [projectId]);
 
@@ -48,10 +50,36 @@ export function BlueprintEditorPage() {
       setAdvancesText(toMultiline(blueprint.advances));
       setRisksText(toMultiline(blueprint.risks));
       setHistory(stateHistory);
+      const dependency = await api.getDependencyStatus({ project_id: projectId, blueprint_id: blueprintId });
+      setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '读取蓝图失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const recompute = async (action: 'recompute_scenes' | 'recompute_draft') => {
+    if (isRecomputing) return;
+    setIsRecomputing(true);
+    setFeedback('');
+    setError('');
+    try {
+      await api.recomputeDependencies({
+        project_id: projectId,
+        blueprint_id: blueprintId,
+        source_type: 'blueprint',
+        source_id: blueprintId,
+        action,
+        confirmed_by: 'frontend_user',
+      });
+      const dependency = await api.getDependencyStatus({ project_id: projectId, blueprint_id: blueprintId });
+      setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
+      setFeedback(action === 'recompute_scenes' ? '已确认重跑场景拆解。' : '已确认重跑草稿生成。');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '重跑失败');
+    } finally {
+      setIsRecomputing(false);
     }
   };
 
@@ -161,6 +189,26 @@ export function BlueprintEditorPage() {
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明你为何编辑该蓝图" />
         </label>
         <button onClick={() => void save()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存蓝图人工修订'}</button>
+      </div>
+
+      <div className="panel">
+        <h3>下游可能过期提示</h3>
+        {dependencyItems.length === 0 ? <div>当前蓝图暂无下游过期项。</div> : (
+          <ul>
+            {dependencyItems.map((item) => (
+              <li key={String(item.stale_id || Math.random())}>
+                影响={String(item.affected_type || '-')} / 原因={String(item.reason || '-')}
+              </li>
+            ))}
+          </ul>
+        )}
+        <button onClick={() => void recompute('recompute_scenes')} disabled={isRecomputing || dependencyItems.length === 0}>
+          {isRecomputing ? '执行中...' : '人工确认重跑场景拆解'}
+        </button>
+        <button onClick={() => void recompute('recompute_draft')} disabled={isRecomputing || dependencyItems.length === 0}>
+          {isRecomputing ? '执行中...' : '人工确认重跑草稿生成'}
+        </button>
+        <div>说明：仅重跑下游产物，不自动发布，不写 Canon。</div>
       </div>
 
       <div className="panel">

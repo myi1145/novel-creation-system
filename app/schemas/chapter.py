@@ -315,6 +315,48 @@ class ChapterWorkbenchState(BaseModel):
     recovery_hint: str = "当前章节暂无可恢复内容，可先创建章节目标"
 
 
+class DependencyStaleItem(BaseModel):
+    stale_id: str
+    project_id: str
+    chapter_no: int | None = None
+    source_type: str
+    source_id: str
+    affected_type: str
+    affected_id: str | None = None
+    affected_scope: str | None = None
+    reason: str
+    status: str = "possibly_stale"
+    created_at: datetime
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChapterDependencyStatusResponse(BaseModel):
+    project_id: str
+    chapter_no: int | None = None
+    items: list[DependencyStaleItem] = Field(default_factory=list)
+
+
+class RecomputeDependenciesRequest(BaseModel):
+    project_id: str
+    chapter_no: int | None = None
+    source_type: str | None = None
+    source_id: str | None = None
+    blueprint_id: str | None = None
+    scene_id: str | None = None
+    action: str = Field(pattern="^(recompute_scenes|recompute_draft)$")
+    confirmed_by: str = "frontend_user"
+
+
+class RecomputeDependenciesResponse(BaseModel):
+    project_id: str
+    chapter_no: int | None = None
+    action: str
+    recompute_result: dict[str, Any] = Field(default_factory=dict)
+    resolved_stale_ids: list[str] = Field(default_factory=list)
+
+
 class PublishDraftRequest(BaseModel):
     project_id: str
     draft_id: str
