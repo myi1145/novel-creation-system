@@ -115,19 +115,24 @@ class ChapterManualEditLoopTest(unittest.TestCase):
         )
         self.assertEqual(proposal.status_code, 200)
 
-        changesets_resp = self.client.get("/api/v1/changesets")
-        self.assertEqual(changesets_resp.status_code, 200)
-        changesets = changesets_resp.json()["data"]
-        target = next(
-            (
-                item
-                for item in changesets
-                if item.get("project_id") == project_id and item.get("source_ref") == draft_id
-            ),
-            None,
-        )
-        self.assertIsNotNone(target)
-        changeset_id = target["id"]
+        proposal_data = proposal.json()["data"]
+        changeset_payload = proposal_data.get("changeset") or {}
+        changeset_id = changeset_payload.get("id")
+
+        if not changeset_id:
+            changesets_resp = self.client.get("/api/v1/changesets")
+            self.assertEqual(changesets_resp.status_code, 200)
+            changesets = changesets_resp.json()["data"]
+            target = next(
+                (
+                    item
+                    for item in changesets
+                    if item.get("project_id") == project_id and item.get("source_ref") == draft_id
+                ),
+                None,
+            )
+            self.assertIsNotNone(target)
+            changeset_id = target["id"]
 
         approve = self.client.post(f"/api/v1/changesets/{changeset_id}/approve", json={"approved_by": "unit_tester"})
         self.assertEqual(approve.status_code, 200)
