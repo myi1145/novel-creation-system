@@ -92,6 +92,7 @@ class ChapterManualEditLoopTest(unittest.TestCase):
         self.assertEqual(edited["metadata"].get("edit_reason"), "人工接管修正文风与信息密度")
         self.assertEqual(edited["metadata"].get("source_type"), "human_edited")
         self.assertEqual(edited["metadata"].get("edited_by"), "unit_tester")
+        self.assertEqual(edited["metadata"].get("source_ref"), draft_id)
         self.assertTrue(edited["metadata"].get("edited_at"))
 
         history = self.client.get(f"/api/v1/chapters/drafts/{draft_id}/state-history?project_id={project_id}")
@@ -114,6 +115,19 @@ class ChapterManualEditLoopTest(unittest.TestCase):
             json={"project_id": project_id, "rationale": "manual-edit-loop", "auto_create_changeset": True},
         )
         self.assertEqual(proposal.status_code, 200)
+        changeset_id = str((proposal.json()["data"].get("changeset") or {}).get("id") or "")
+        self.assertTrue(changeset_id)
+
+        approve = self.client.post(f"/api/v1/changesets/{changeset_id}/approve", json={"approved_by": "unit_tester"})
+        self.assertEqual(approve.status_code, 200)
+        apply_result = self.client.post(f"/api/v1/changesets/{changeset_id}/apply", json={})
+        self.assertEqual(apply_result.status_code, 200)
+
+        publish = self.client.post(
+            "/api/v1/chapters/drafts/publish",
+            json={"project_id": project_id, "draft_id": draft_id, "published_by": "unit_tester"},
+        )
+        self.assertEqual(publish.status_code, 200)
 
 
 if __name__ == "__main__":
