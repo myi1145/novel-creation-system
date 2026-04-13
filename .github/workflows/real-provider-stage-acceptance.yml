@@ -26,10 +26,10 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 设置 Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -76,7 +76,7 @@ jobs:
 
       - name: 上传 real provider 阶段验收摘要
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: real-provider-stage-acceptance-summary
           path: |
@@ -86,7 +86,7 @@ jobs:
 
       - name: 上传 real provider 阶段验收 output 工件
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: real-provider-stage-acceptance-output
           path: output/**
@@ -117,7 +117,7 @@ jobs:
 
       - name: 上传 real provider 可归档工件目录
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: real-provider-stage-acceptance-artifacts
           path: |
