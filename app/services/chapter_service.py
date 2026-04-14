@@ -46,6 +46,7 @@ from app.schemas.chapter import (
     PublishHistoryItem,
     PublishHistoryRelation,
     PublishHistoryResponse,
+    PublishedChapterReaderResponse,
     VersionDiffCheck,
     VersionDiffMetrics,
     VersionDiffRef,
@@ -1482,6 +1483,65 @@ class ChapterService:
             working_state_relation=relation,
             history=history,
         )
+
+    def _get_latest_published_row(self, db: Session, *, project_id: str, chapter_no: int) -> tuple[PublishRecordORM, PublishedChapterORM] | None:
+        row = (
+            db.query(PublishRecordORM, PublishedChapterORM)
+            .join(PublishedChapterORM, PublishRecordORM.published_chapter_id == PublishedChapterORM.id)
+            .filter(
+                PublishRecordORM.project_id == project_id,
+                PublishedChapterORM.chapter_no == chapter_no,
+            )
+            .order_by(PublishedChapterORM.published_at.desc(), PublishRecordORM.created_at.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        return row[0], row[1]
+
+    def get_published_reader(self, db: Session, *, project_id: str, chapter_no: int) -> PublishedChapterReaderResponse:
+        goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+        if goal is None:
+            raise NotFoundError("章节目标不存在")
+
+        row = self._get_latest_published_row(db=db, project_id=project_id, chapter_no=chapter_no)
+        if row is None:
+            raise NotFoundError("本章还没有正式发布内容。")
+
+        record, published = row
+        content = published.content or ""
+        return PublishedChapterReaderResponse(
+            project_id=project_id,
+            chapter_no=chapter_no,
+            title=published.title,
+            content=content,
+            published_at=published.published_at,
+            publish_record_id=record.id,
+            draft_ref_id=record.draft_id,
+            changeset_ref_id=record.changeset_id,
+            word_count=len(content),
+            status=record.publish_status,
+        )
+
+    def _format_published_datetime(self, published_at: datetime) -> str:
+        local_dt = published_at.astimezone(timezone.utc)
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def export_published_reader_markdown(self, db: Session, *, project_id: str, chapter_no: int) -> str:
+        reader = self.get_published_reader(db=db, project_id=project_id, chapter_no=chapter_no)
+        published_at_text = self._format_published_datetime(reader.published_at)
+        title_line = f"# 第 {reader.chapter_no} 章 {reader.title}"
+        return "\n\n".join([title_line, f"> 发布时间：{published_at_text}", reader.content])
+
+    def export_published_reader_txt(self, db: Session, *, project_id: str, chapter_no: int) -> str:
+        reader = self.get_published_reader(db=db, project_id=project_id, chapter_no=chapter_no)
+        published_at_text = self._format_published_datetime(reader.published_at)
+        title_line = f"第 {reader.chapter_no} 章 {reader.title}"
+        return "\n\n".join([title_line, f"发布时间：{published_at_text}", reader.content])
 
     def get_version_diff(self, db: Session, *, project_id: str, chapter_no: int) -> VersionDiffResponse:
         goal = (

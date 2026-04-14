@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -139,6 +139,34 @@ def get_publish_history(project_id: str, chapter_no: int, db: Session = Depends(
 def get_version_diff(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> dict:
     result = chapter_service.get_version_diff(db=db, project_id=project_id, chapter_no=chapter_no)
     return success_response(data=result.model_dump(mode="json"), message="章节版本差异与重发建议获取成功")
+
+
+@router.get("/projects/{project_id}/chapters/{chapter_no}/published-reader")
+def get_published_reader(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> dict:
+    result = chapter_service.get_published_reader(db=db, project_id=project_id, chapter_no=chapter_no)
+    return success_response(data=result.model_dump(mode="json"), message="发布章节成品阅读数据获取成功")
+
+
+@router.get("/projects/{project_id}/chapters/{chapter_no}/published-reader/export.md")
+def export_published_reader_markdown(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> Response:
+    content = chapter_service.export_published_reader_markdown(db=db, project_id=project_id, chapter_no=chapter_no)
+    filename = f"project_{project_id}_chapter_{chapter_no}_published.md"
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/projects/{project_id}/chapters/{chapter_no}/published-reader/export.txt")
+def export_published_reader_txt(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> Response:
+    content = chapter_service.export_published_reader_txt(db=db, project_id=project_id, chapter_no=chapter_no)
+    filename = f"project_{project_id}_chapter_{chapter_no}_published.txt"
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/dependency-status/recompute")

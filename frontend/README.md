@@ -35,6 +35,7 @@ npm run build
 - `/projects/:projectId/chapters/:chapterNo/release-readiness`
 - `/projects/:projectId/chapters/:chapterNo/publish-history`
 - `/projects/:projectId/chapters/:chapterNo/version-diff`
+- `/projects/:projectId/chapters/:chapterNo/published-reader`
 - `/projects/:projectId/workflows`
 
 ## 说明
@@ -127,3 +128,20 @@ npm run build
    - 轻量指标：`length_delta / paragraph_delta / change_level / changed_summary`
    - 检查项列表（长度、段落、来源、发布时间等）
 4. 该能力只做“轻量差异提示 + 重发建议”，不是全文 diff、不是版本回滚系统、不是自动重发系统。
+
+## 发布章节成品阅读与导出（本轮新增）
+
+1. 新增页面路由：`/projects/:projectId/chapters/:chapterNo/published-reader`。
+2. `WorkbenchPage`、`PublishedPage`、`PublishHistoryPage` 已新增统一入口文案「阅读已发布章节」。
+3. 页面用于作者阅读已发布单章成品，展示：
+   - `第 X 章 + 标题`
+   - 发布时间
+   - 字数
+   - 正文阅读区域（保留段落换行）
+4. 页面提供 `复制正文` 按钮：
+   - 仅复制正文内容
+   - 复制成功/失败均有中文反馈
+5. 页面提供单章导出入口：
+   - Markdown：`/api/v1/chapters/projects/{project_id}/chapters/{chapter_no}/published-reader/export.md`
+   - txt：`/api/v1/chapters/projects/{project_id}/chapters/{chapter_no}/published-reader/export.txt`
+6. 本能力范围严格限定为**单章已发布成品阅读与导出**，不是整本书导出、不是 PDF/Word 导出，也不是出版排版系统。

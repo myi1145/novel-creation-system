@@ -377,6 +377,19 @@ class PublishHistoryResponse(BaseModel):
     history: list[PublishHistoryItem] = Field(default_factory=list)
 
 
+class PublishedChapterReaderResponse(BaseModel):
+    project_id: str
+    chapter_no: int
+    title: str
+    content: str
+    published_at: datetime
+    publish_record_id: str
+    draft_ref_id: str
+    changeset_ref_id: str
+    word_count: int
+    status: str
+
+
 class VersionDiffRef(BaseModel):
     publish_record_id: str | None = None
     published_at: datetime | None = None
