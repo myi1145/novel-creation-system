@@ -94,7 +94,7 @@ export function VersionDiffPage() {
   return (
     <div>
       <h2>版本差异与重发建议</h2>
-      <div className="panel">用于查看当前工作内容相对最近发布版本的变化。</div>
+      <div className="panel">用于查看当前工作内容相对最近发布版本的变化，并判断是否建议重新发布。</div>
 
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
@@ -151,6 +151,7 @@ export function VersionDiffPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/publish-history`}>回章节发布历史</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/release-readiness`}>回发布前检查</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/published-reader`}>阅读已发布章节</Link>
           <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
         </div>
       </div>

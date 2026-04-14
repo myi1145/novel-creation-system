@@ -69,7 +69,7 @@ export function PublishedChapterReaderPage() {
   return (
     <div>
       <h2>已发布章节阅读</h2>
-      <div className="panel">用于阅读、复制和导出已经发布的章节成品。</div>
+      <div className="panel">用于阅读、复制和导出已经发布的章节成品。导出支持 Markdown 与 txt。</div>
 
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
@@ -91,7 +91,7 @@ export function PublishedChapterReaderPage() {
               导出 Markdown
             </a>
             <a href={txtUrl} download>
-              导出 TXT
+              导出 txt
             </a>
           </div>
 

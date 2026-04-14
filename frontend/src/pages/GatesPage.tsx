@@ -24,6 +24,7 @@ function toGateSummary(result: Record<string, unknown>): string[] {
 export function GatesPage() {
   const { projectId = '' } = useParams();
   const [draftId, setDraftId] = useState('');
+  const [chapterNo, setChapterNo] = useState('1');
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
@@ -72,14 +73,21 @@ export function GatesPage() {
   if (!projectId) return <BlockedState text="缺少项目上下文" />;
 
   return <div><h2>质量检查</h2>
-    <div className="panel">用于检查章节草稿是否满足发布前要求。</div>
+    <div className="panel">用于检查章节草稿是否满足发布前要求。建议顺序：质量检查 → 变更提案 → 发布前检查 → 发布章节。</div>
     <div className="panel">
       <input placeholder="请输入草稿编号" value={draftId} onChange={(e)=>setDraftId(e.target.value)} />
       <button onClick={run} disabled={isRunningGate}>{isRunningGate ? '执行中...' : '执行质量检查'}</button>
     </div>
     {isRunningGate && <ActionSuccess text="正在执行质量检查，请稍候（约 10-30 秒）..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回创作工作台</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>生成变更提案</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回创作工作台</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>下一步：生成变更提案</Link><Link to={`/projects/${projectId}/published`}>下一步：发布章节</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    <div className="panel">
+      <label>
+        章节号
+        <input value={chapterNo} onChange={(e) => setChapterNo(e.target.value)} />
+      </label>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNo) || 1}/release-readiness`}>查看发布前检查</Link>
+    </div>
     {result ? (
       <div className="panel">
         <h3>质量检查结果摘要</h3>

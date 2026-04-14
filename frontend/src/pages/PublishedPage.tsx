@@ -135,7 +135,7 @@ export function PublishedPage() {
   };
 
   return <div><h2>发布章节</h2>
-    <div className="panel">用于把当前章节发布为正式版本。发布前建议先完成质量检查、变更提案与发布前检查。</div>
+    <div className="panel">用于把当前章节发布为正式版本。建议顺序：质量检查 → 变更提案 → 发布前检查 → 发布章节 → 发布后追踪与导出。</div>
     <div className="panel"><input value={draftId} onChange={(e)=>setDraftId(e.target.value)} placeholder="请输入草稿编号"/><button disabled={isPublishing} onClick={()=>void (async()=>{ if (isPublishing) return; setIsPublishing(true); try { await run(async()=>{ const normalizedDraftId = draftId.trim(); const result = await api.publishDraft({project_id:projectId,draft_id:normalizedDraftId,published_by:'frontend_user'}); setPublishResult(result); if (normalizedDraftId) { window.localStorage.setItem(lastDraftStorageKey, normalizedDraftId); } const id = getPublishedChapterIdFromPublishResult(result); if (id) { setPublishedId(id); window.localStorage.setItem(lastPublishedStorageKey, id); mergeProjectChainState(projectId, { publishedChapterId: id }); setFeedback('发布成功，已自动带入本次章节。'); } },'已发布章节。','发布章节','请先确认前置流程已完成。'); } finally { setIsPublishing(false); } })()}>{isPublishing ? '发布中...' : '发布章节'}</button></div>
     <div className="panel"><button disabled={isRefreshingPublished} onClick={()=>void (async()=>{ if (isRefreshingPublished) return; setIsRefreshingPublished(true); try { await run(async()=>setPublished(await api.listPublished(projectId)),'已更新章节列表。','更新章节列表'); } finally { setIsRefreshingPublished(false); } })()}>{isRefreshingPublished ? '加载中...' : '更新章节列表'}</button><button disabled={isRefreshingRecords} onClick={()=>void (async()=>{ if (isRefreshingRecords) return; setIsRefreshingRecords(true); try { await run(async()=>setRecords(await api.listPublishRecords(projectId)),'已更新发布记录。','更新发布记录'); } finally { setIsRefreshingRecords(false); } })()}>{isRefreshingRecords ? '加载中...' : '更新发布记录'}</button></div>
     <div className="panel"><input value={publishedId} onChange={(e)=>setPublishedId(e.target.value)} placeholder="请输入已发布章节编号"/><button disabled={isSummarizing} onClick={()=>void handleGetSummary()}>{isSummarizing ? '加载中...' : '查看单章摘要'}</button><button disabled={isLoadingLatestSummary} onClick={()=>void (async()=>{ if (isLoadingLatestSummary) return; setIsLoadingLatestSummary(true); try { await run(async()=>setLatestSummary(await api.getLatestSummary(projectId)),'已加载最新章节摘要。','查看最新章节摘要'); } finally { setIsLoadingLatestSummary(false); } })()}>{isLoadingLatestSummary ? '加载中...' : '查看最新章节摘要'}</button></div>
@@ -151,7 +151,7 @@ export function PublishedPage() {
                 {item.title ? `｜${item.title}` : ''}
                 {item.publishedAt ? `｜发布时间：${item.publishedAt}` : ''}
               </div>
-              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); window.localStorage.setItem(lastPublishedStorageKey, item.publishedChapterId); setFeedback('已带入该章节，可继续查看摘要。'); setError(''); }}>带入该章节并查看摘要</button>
+              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); window.localStorage.setItem(lastPublishedStorageKey, item.publishedChapterId); setFeedback('已带入该章节，可继续查看摘要。'); setError(''); }}>带入该章节</button>
               <button type="button" disabled={isSummarizing} onClick={()=>void handleGetSummary(item.publishedChapterId)}>查看单章摘要</button>
             </li>
           ))}
@@ -167,9 +167,9 @@ export function PublishedPage() {
         <input value={chapterNoForReadiness} onChange={(e) => setChapterNoForReadiness(e.target.value)} />
       </label>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>发布前检查</Link>
-      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/publish-history`}>章节发布历史</Link>
-      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/version-diff`}>版本差异与重发建议</Link>
-      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/published-reader`}>阅读已发布章节</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/publish-history`}>发布后追踪：章节发布历史</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/version-diff`}>发布后追踪：版本差异与重发建议</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/published-reader`}>发布后追踪：阅读已发布章节</Link>
     </div>
     {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在处理，请稍候..." />}
     {feedback && <ActionSuccess text={feedback}/>} {error && <ActionFailure text={error}/>} 
