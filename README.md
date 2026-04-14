@@ -18,7 +18,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 
 为避免口径漂移：README 不定义当前阶段结论，只提供执行入口与推荐顺序；阶段判断与任务边界一律以 `current_stage_handoff.md` 为准。
 
-当前仓库阶段口径以 handoff 为准：四类基础卡槽最小人工维护闭环与字段体验收口已完成，当前进入“基础卡槽导入导出”方向确认与边界立项阶段；相关决策链位于 `md/next_stage_decision_card_import_export/`（00~04），并由 handoff 统一收口。
+当前仓库阶段口径以 handoff 为准：基础卡槽导入导出阶段已完成并签收（四类基础卡槽 JSON/CSV 导入导出、CSV 模板与导入校验报告最小闭环已具备）；当前进入“全书级规划与卡槽种子生成”方向确认与边界立项阶段（docs-only）；相关决策链位于 `md/next_stage_decision_story_planning/`（00~04），并由 handoff 统一收口。当前不继续扩展卡槽导入导出作为主战场。
 
 ---
 
@@ -79,7 +79,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 - 已有检测能力不等于自动修复闭环：并非所有问题都会自动进入稳定重写链路；
 - 默认配置仍偏联调（如 `mock` provider + 可 fallback）；真实模型效果依赖外部环境与参数；
 - 默认回归仍以 mock provider 为主；真实 provider 需单独配置并按 smoke / acceptance 入口验收，不能视为开箱即跑；
-- 当前阶段（以 `md/status/current_stage_handoff.md` 为准）为“基础卡槽导入导出立项（docs-only）”；
+- 当前阶段（以 `md/status/current_stage_handoff.md` 为准）为“全书级规划与卡槽种子生成立项（docs-only）”；
 - 已收口 Alembic 迁移链路，`AUTO_CREATE_TABLES` 仅保留开发兜底语义；
 - 运维级能力（多环境发布策略、长期稳定性基线、平台化治理）仍有限。
 
