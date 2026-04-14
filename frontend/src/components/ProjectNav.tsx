@@ -6,10 +6,10 @@ const tabs = [
   ['genres', '题材装载'],
   ['canon', 'Canon 快照'],
   ['objects', '对象库'],
-  ['workbench', '章节工作台'],
-  ['gates', 'Gate 结果'],
-  ['changesets', 'ChangeSet 审批'],
-  ['published', '发布与摘要'],
+  ['workbench', '创作工作台'],
+  ['gates', '质量检查结果图表'],
+  ['changesets', '变更提案'],
+  ['published', '发布章节'],
 ];
 
 export function ProjectNav() {

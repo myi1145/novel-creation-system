@@ -41,11 +41,11 @@ export function SceneEditorPage() {
     setError('');
     try {
       const [scene, stateHistory] = await Promise.all([api.getScene(projectId, sceneId), api.getSceneStateHistory(projectId, sceneId)]);
-      setSceneGoal(String(scene.scene_goal || ''));
+      setSceneGoal(String(scene.场景目标 || ''));
       setParticipantsText(toMultiline(scene.participating_entities));
-      setConflictType(String(scene.conflict_type || ''));
-      setEmotionalCurve(String(scene.emotional_curve || ''));
-      setInformationDelta(String(scene.information_delta || ''));
+      setConflictType(String(scene.冲突类型 || ''));
+      setEmotionalCurve(String(scene.情绪曲线 || ''));
+      setInformationDelta(String(scene.信息变化 || ''));
       setBlueprintId(String(scene.blueprint_id || ''));
       setHistory(stateHistory);
       const dependency = await api.getDependencyStatus({ project_id: projectId, scene_id: sceneId });
@@ -88,7 +88,7 @@ export function SceneEditorPage() {
   const onSave = async () => {
     if (isSaving) return;
     if (!editReason.trim()) {
-      setError('请填写 edit_reason');
+      setError('请填写修订原因（edit_reason）');
       return;
     }
     setIsSaving(true);
@@ -97,20 +97,20 @@ export function SceneEditorPage() {
     try {
       const updated = await api.manualEditScene(sceneId, {
         project_id: projectId,
-        scene_goal: sceneGoal,
+        场景目标: sceneGoal,
         participating_entities: parseMultiline(participantsText),
-        conflict_type: conflictType,
-        emotional_curve: emotionalCurve,
-        information_delta: informationDelta,
+        冲突类型: conflictType,
+        情绪曲线: emotionalCurve,
+        信息变化: informationDelta,
         edit_reason: editReason,
         edited_by: 'frontend_user',
       });
-      setSceneGoal(String(updated.scene_goal || sceneGoal));
+      setSceneGoal(String(updated.场景目标 || sceneGoal));
       setParticipantsText(toMultiline(updated.participating_entities));
-      setConflictType(String(updated.conflict_type || conflictType));
-      setEmotionalCurve(String(updated.emotional_curve || emotionalCurve));
-      setInformationDelta(String(updated.information_delta || informationDelta));
-      setFeedback('场景人工修订已保存。请重新生成草稿，再继续 Gate → ChangeSet → Publish。');
+      setConflictType(String(updated.冲突类型 || conflictType));
+      setEmotionalCurve(String(updated.情绪曲线 || emotionalCurve));
+      setInformationDelta(String(updated.信息变化 || informationDelta));
+      setFeedback('场景人工修订已保存。请重新生成草稿，再继续质量检查 → 变更提案 → 发布章节。');
       setEditReason('');
       const stateHistory = await api.getSceneStateHistory(projectId, sceneId);
       setHistory(stateHistory);
@@ -147,39 +147,40 @@ export function SceneEditorPage() {
 
   return (
     <div>
-      <h2>场景人工修订</h2>
+      <h2>场景安排人工修订</h2>
+      <div className="panel">用于把章节蓝图拆成具体场景，并支持人工修订后继续生成章节草稿。</div>
       <div className="panel">project_id={projectId} / scene_id={sceneId} / blueprint_id={blueprintId || '-'}</div>
       <div className="panel">
         <label>
-          scene_goal
+          场景目标
           <textarea value={sceneGoal} onChange={(e) => setSceneGoal(e.target.value)} rows={5} disabled={isLoading} />
         </label>
         <label>
-          participating_entities（每行一个）
+          参与角色（每行一个）
           <textarea value={participantsText} onChange={(e) => setParticipantsText(e.target.value)} rows={5} disabled={isLoading} />
         </label>
         <label>
-          conflict_type
+          冲突类型
           <input value={conflictType} onChange={(e) => setConflictType(e.target.value)} disabled={isLoading} />
         </label>
         <label>
-          emotional_curve
+          情绪曲线
           <input value={emotionalCurve} onChange={(e) => setEmotionalCurve(e.target.value)} disabled={isLoading} />
         </label>
         <label>
-          information_delta
+          信息变化
           <textarea value={informationDelta} onChange={(e) => setInformationDelta(e.target.value)} rows={4} disabled={isLoading} />
         </label>
         <label>
-          edit_reason（必填）
+          修订原因（edit_reason，必填）
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明为什么编辑该场景" />
         </label>
-        <button onClick={() => void onSave()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存场景人工修订'}</button>
+        <button onClick={() => void onSave()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存人工修订场景'}</button>
       </div>
 
       <div className="panel">
-        <h3>下游可能过期提示</h3>
-        {dependencyItems.length === 0 ? <div>当前场景暂无下游过期项。</div> : (
+        <h3>下游内容可能已过期</h3>
+        {dependencyItems.length === 0 ? <div>当前场景没有检测到下游内容过期项。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
@@ -189,9 +190,9 @@ export function SceneEditorPage() {
           </ul>
         )}
         <button onClick={() => void recomputeDraft()} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '人工确认重跑草稿生成'}
+          {isRecomputing ? '执行中...' : '重新生成下游内容：章节草稿'}
         </button>
-        <div>重跑不会自动发布，也不会自动写入 Canon。</div>
+        <div>重新生成不会自动发布章节，也不会自动写入正式设定。</div>
       </div>
 
       <div className="panel">
@@ -201,10 +202,10 @@ export function SceneEditorPage() {
         </button>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
-          <Link to={`/projects/${projectId}/published`}>去 Publish</Link>
-          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>编辑草稿</Link> : null}
+          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>
       </div>

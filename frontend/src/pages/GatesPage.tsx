@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { mergeProjectChainState } from '../features/projectState';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
-import { ActionFailure, ActionSuccess, BlockedState } from '../components/Status';
+import { ActionFailure, ActionSuccess, BlockedState, EmptyState } from '../components/Status';
 import { toActionErrorMessage } from '../utils/actionError';
 
 const DEFAULT_GATE_NAMES = ['schema_gate', 'canon_gate', 'narrative_gate', 'style_gate'] as const;
@@ -43,12 +43,12 @@ export function GatesPage() {
       window.localStorage.setItem(lastDraftStorageKey, sanitizedDraftId);
       setResult(data as Record<string, unknown>);
       mergeProjectChainState(projectId, { draftId: sanitizedDraftId });
-      setFeedback('Gate 审查完成。若需继续人工修订，可返回草稿编辑；通过后再进入 ChangeSet。');
+      setFeedback('质量检查完成。若需继续人工修订，可返回草稿编辑；通过后再进入变更提案。');
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
-        setError('Gate 审查请求失败，请检查草稿编号后重试（参数不符合后端要求）。');
+        setError('执行质量检查失败，请检查草稿编号后重试（参数不符合后端要求）。');
       } else {
-        setError(toActionErrorMessage('执行 Gate 审查', e, '请检查草稿状态或稍后重试。'));
+        setError(toActionErrorMessage('执行质量检查', e, '请检查草稿状态或稍后重试。'));
       }
     } finally {
       setIsRunningGate(false);
@@ -57,14 +57,15 @@ export function GatesPage() {
 
   if (!projectId) return <BlockedState text="缺少项目上下文" />;
 
-  return <div><h2>Gate 结果页</h2>
+  return <div><h2>质量检查</h2>
+    <div className="panel">用于检查章节草稿是否满足发布要求，通过后再进入变更提案。</div>
     <div className="panel">
-      <input placeholder="draft_id" value={draftId} onChange={(e)=>setDraftId(e.target.value)} />
-      <button onClick={run} disabled={isRunningGate}>{isRunningGate ? '执行中...' : '执行 Gate 审查'}</button>
+      <input placeholder="请输入草稿编号（draft_id）" value={draftId} onChange={(e)=>setDraftId(e.target.value)} />
+      <button onClick={run} disabled={isRunningGate}>{isRunningGate ? '执行中...' : '执行质量检查'}</button>
     </div>
-    {isRunningGate && <ActionSuccess text="正在执行 Gate 审查，请稍候..." />}
+    {isRunningGate && <ActionSuccess text="正在执行质量检查，请稍候..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去 ChangeSet 审批</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
-    <pre className="panel">{JSON.stringify(result, null, 2)}</pre>
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去变更提案</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    {result ? <pre className="panel">{JSON.stringify(result, null, 2)}</pre> : <EmptyState text="还没有质量检查结果，请先执行质量检查。" />}
   </div>;
 }

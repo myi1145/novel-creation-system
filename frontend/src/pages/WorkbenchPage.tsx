@@ -5,7 +5,7 @@ import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState, PendingApprovalState } from '../components/Status';
 import type { ChapterBlueprint, ChapterWorkbenchState } from '../types/domain';
 
-const STEPS = ['目标', '蓝图', '场景', '草稿', 'Gate', 'ChangeSet', 'Publish'];
+const STEPS = ['目标', '章节蓝图', '场景安排', '章节草稿', '质量检查', '变更提案', '发布章节'];
 
 function toSummary(blueprint: ChapterBlueprint) {
   return {
@@ -485,14 +485,15 @@ export function WorkbenchPage() {
 
   return (
     <div>
-      <h2>章节工作台</h2>
+      <h2>创作工作台</h2>
+      <div className="panel">用于查看当前处于哪一步，并按“目标 → 章节蓝图 → 场景安排 → 章节草稿 → 质量检查 → 变更提案 → 发布章节”继续推进。</div>
       <div className="panel">步骤：{STEPS.join(' → ')}</div>
       <div className="panel">
-        <h3>下游可能过期提示</h3>
+        <h3>下游内容可能已过期</h3>
         <button onClick={() => void refreshDependencyStatus()} disabled={isRefreshingDependency}>
           {isRefreshingDependency ? '刷新中...' : '刷新下游状态'}
         </button>
-        {dependencyItems.length === 0 ? <div>当前章暂无下游可能过期项。</div> : (
+        {dependencyItems.length === 0 ? <div>当前章节没有检测到下游内容过期项。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
@@ -502,12 +503,12 @@ export function WorkbenchPage() {
           </ul>
         )}
         <button onClick={() => void recomputeDependency('recompute_scenes')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
-          {isRecomputingDependency ? '重跑中...' : '人工确认重跑：场景拆解'}
+          {isRecomputingDependency ? '重跑中...' : '重新生成下游内容：场景安排'}
         </button>
         <button onClick={() => void recomputeDependency('recompute_draft')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
-          {isRecomputingDependency ? '重跑中...' : '人工确认重跑：草稿生成'}
+          {isRecomputingDependency ? '重跑中...' : '重新生成下游内容：章节草稿'}
         </button>
-        <div>重跑不会自动发布，也不会绕过 ChangeSet。</div>
+        <div>重新生成不会自动发布章节，也不会绕过变更提案。</div>
       </div>
       <div className="panel">
         当前章摘要：chapter_no={chapterNo}，goal={goalId || '-'}，blueprint={blueprintId || '-'}，draft={draftId || '-'}
@@ -556,10 +557,10 @@ export function WorkbenchPage() {
       </div>
 
       <div className="panel">
-        <h3>蓝图候选列表 + 对比子视图</h3>
+        <h3>章节蓝图候选列表与对比</h3>
         <div>数据来源：{blueprintSource === 'api' ? '当前回读内容' : blueprintSource === 'cache' ? '最近缓存内容' : '-'}</div>
         {blueprintCandidates.length === 0 ? (
-          <EmptyState text="请先执行“生成蓝图候选”" />
+          <EmptyState text="请先执行“生成章节蓝图候选”" />
         ) : (
           <>
             <div className="panel">
@@ -604,8 +605,8 @@ export function WorkbenchPage() {
                     <div>标题：{summary.title_hint}</div>
                     <div>后端 selected：{String(summary.selected)}</div>
                     <button onClick={() => setExpandedBlueprintId(isExpanded ? '' : summary.id)}>{isExpanded ? '收起详情' : '展开详情'}</button>
-                    <button onClick={() => selectCandidateInUi(summary.id)}>设为当前 blueprint_id</button>
-                    <Link to={`/projects/${projectId}/blueprints/${summary.id}/edit`}>进入人工修订（编辑蓝图）</Link>
+                    <button onClick={() => selectCandidateInUi(summary.id)}>设为当前章节蓝图</button>
+                    <Link to={`/projects/${projectId}/blueprints/${summary.id}/edit`}>人工修订蓝图</Link>
                     {isExpanded && (
                       <div className="panel">
                         <div>摘要：{summary.summary}</div>
@@ -624,10 +625,10 @@ export function WorkbenchPage() {
       <div className="panel">
         <h3>最近场景结果（重进可见）</h3>
         {!lastScenesPayload ? (
-          <EmptyState text="尚无已缓存的场景拆解结果" />
+          <EmptyState text="还没有场景安排结果，请先生成场景安排。" />
         ) : (
           <div>
-            <div>scene 数量：{lastScenesPayload.scene_count}</div>
+            <div>场景数量：{lastScenesPayload.scene_count}</div>
             <div>scene_ids：{lastScenesPayload.scene_ids.join('，') || '-'}</div>
             <div>场景标题样例：{lastScenesPayload.sample_titles.join('；') || '-'}</div>
             <div>
@@ -644,7 +645,7 @@ export function WorkbenchPage() {
       <div className="panel">
         <h3>最近草稿结果（重进可见）</h3>
         {!lastDraftPayload && !lastRevisedDraftPayload ? (
-          <EmptyState text="尚无已缓存的草稿结果" />
+          <EmptyState text="还没有章节草稿结果，请先生成章节草稿。" />
         ) : (
           <div>
             {lastDraftPayload && (
@@ -669,25 +670,25 @@ export function WorkbenchPage() {
         <h3>最近动作结果</h3>
         <div>上一次执行：{lastAction || '-'}</div>
         <div>结果摘要：{lastActionResultSummary || '-'}</div>
-        <div>建议下一步：{draftId ? '进入 Gate / ChangeSet / Publish 页面继续闭环' : blueprintId ? '可继续场景拆解或草稿生成' : goalId ? '可继续生成并选择蓝图' : '先创建章节目标'}</div>
+        <div>建议下一步：{draftId ? '进入质量检查 / 变更提案 / 发布章节页面继续流程' : blueprintId ? '可继续生成场景安排或章节草稿' : goalId ? '可继续生成并选择章节蓝图' : '先创建章节目标'}</div>
       </div>
 
       <div className="panel">
         <h3>继续处理入口</h3>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
-          {blueprintId ? <Link to={`/projects/${projectId}/blueprints/${blueprintId}/edit`}>进入人工修订（编辑蓝图）</Link> : null}
-          {sceneIds[0] ? <Link to={`/projects/${projectId}/scenes/${sceneIds[0]}/edit`}>进入人工修订（编辑场景）</Link> : null}
-          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>进入人工修订（编辑草稿）</Link> : null}
-          <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
-          <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
-          <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前一致性验收</Link>
+          {blueprintId ? <Link to={`/projects/${projectId}/blueprints/${blueprintId}/edit`}>人工修订蓝图</Link> : null}
+          {sceneIds[0] ? <Link to={`/projects/${projectId}/scenes/${sceneIds[0]}/edit`}>人工修订场景</Link> : null}
+          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
+          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前检查</Link>
         </div>
       </div>
 
       {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-      {draftId && <PendingApprovalState text="可进入 Gate / ChangeSet / Publish 页面继续闭环" />}
+      {draftId && <PendingApprovalState text="可进入质量检查 / 变更提案 / 发布章节页面继续流程" />}
       <pre className="panel">{JSON.stringify(stateDump, null, 2)}</pre>
     </div>
   );
