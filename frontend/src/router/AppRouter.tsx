@@ -11,6 +11,7 @@ import { ObjectsPage } from '../pages/ObjectsPage';
 import { OverviewPage } from '../pages/OverviewPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { PublishedPage } from '../pages/PublishedPage';
+import { PublishHistoryPage } from '../pages/PublishHistoryPage';
 import { ReleaseReadinessPage } from '../pages/ReleaseReadinessPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
@@ -34,6 +35,7 @@ export function AppRouter() {
         <Route path="changesets" element={<ChangesetsPage />} />
         <Route path="published" element={<PublishedPage />} />
         <Route path="chapters/:chapterNo/release-readiness" element={<ReleaseReadinessPage />} />
+        <Route path="chapters/:chapterNo/publish-history" element={<PublishHistoryPage />} />
         <Route path="workflows" element={<WorkflowsPage />} />
       </Route>
     </Routes>

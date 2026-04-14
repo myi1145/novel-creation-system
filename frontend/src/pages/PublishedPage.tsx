@@ -166,6 +166,7 @@ export function PublishedPage() {
         <input value={chapterNoForReadiness} onChange={(e) => setChapterNoForReadiness(e.target.value)} />
       </label>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>进入发布前检查</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/publish-history`}>章节发布历史</Link>
     </div>
     {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在执行请求，请稍候..." />}
     {feedback && <ActionSuccess text={feedback}/>} {error && <ActionFailure text={error}/>} 

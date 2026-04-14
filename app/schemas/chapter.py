@@ -355,6 +355,28 @@ class ReleaseReadinessResponse(BaseModel):
     checks: list[ReleaseReadinessCheck] = Field(default_factory=list)
 
 
+class PublishHistoryItem(BaseModel):
+    publish_record_id: str
+    published_at: datetime
+    draft_ref_id: str
+    changeset_ref_id: str
+    summary: str
+    status: str
+
+
+class PublishHistoryRelation(BaseModel):
+    status: str
+    message: str
+
+
+class PublishHistoryResponse(BaseModel):
+    project_id: str
+    chapter_no: int
+    latest_published: PublishHistoryItem | None = None
+    working_state_relation: PublishHistoryRelation
+    history: list[PublishHistoryItem] = Field(default_factory=list)
+
+
 class RecomputeDependenciesRequest(BaseModel):
     project_id: str
     chapter_no: int | None = None

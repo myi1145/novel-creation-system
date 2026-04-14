@@ -684,6 +684,7 @@ export function WorkbenchPage() {
           <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
           <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前检查</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNo}/publish-history`}>章节发布历史</Link>
         </div>
       </div>
 

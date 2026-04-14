@@ -92,6 +92,7 @@ export function ReleaseReadinessPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
           <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/publish-history`}>章节发布历史</Link>
         </div>
       </div>
     </div>
