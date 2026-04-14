@@ -8,6 +8,8 @@ import { DraftEditorPage } from '../pages/DraftEditorPage';
 import { SceneEditorPage } from '../pages/SceneEditorPage';
 import { GatesPage } from '../pages/GatesPage';
 import { GenresPage } from '../pages/GenresPage';
+import { FactionCardsPage } from '../pages/FactionCardsPage';
+import { LocationCardsPage } from '../pages/LocationCardsPage';
 import { ObjectsPage } from '../pages/ObjectsPage';
 import { OverviewPage } from '../pages/OverviewPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
@@ -33,6 +35,8 @@ export function AppRouter() {
         <Route path="objects" element={<ObjectsPage />} />
         <Route path="character-cards" element={<CharacterCardsPage />} />
         <Route path="terminology-cards" element={<TerminologyCardsPage />} />
+        <Route path="faction-cards" element={<FactionCardsPage />} />
+        <Route path="location-cards" element={<LocationCardsPage />} />
         <Route path="workbench" element={<WorkbenchPage />} />
         <Route path="blueprints/:blueprintId/edit" element={<BlueprintEditorPage />} />
         <Route path="scenes/:sceneId/edit" element={<SceneEditorPage />} />

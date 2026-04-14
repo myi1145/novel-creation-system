@@ -507,3 +507,46 @@ class TerminologyCardORM(Base):
     is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class StructuredFactionCardORM(Base):
+    __tablename__ = "structured_faction_cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    aliases: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    faction_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    core_members: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    territory: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    stance: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    goals: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    relationship_notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    current_status: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    first_appearance_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class StructuredLocationCardORM(Base):
+    __tablename__ = "structured_location_cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    aliases: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    location_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    region: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    key_features: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    related_factions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    narrative_role: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    current_status: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    first_appearance_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)

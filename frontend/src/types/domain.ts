@@ -53,3 +53,43 @@ export interface TerminologyCard {
   created_at: string;
   updated_at: string;
 }
+
+
+export interface FactionCard {
+  id: number;
+  project_id: string;
+  name: string;
+  aliases: string[];
+  faction_type: string;
+  description: string;
+  core_members: string[];
+  territory: string;
+  stance: string;
+  goals: string;
+  relationship_notes: string;
+  current_status: string;
+  first_appearance_chapter?: number | null;
+  last_update_source: string;
+  is_canon: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LocationCard {
+  id: number;
+  project_id: string;
+  name: string;
+  aliases: string[];
+  location_type: string;
+  description: string;
+  region: string;
+  key_features: string[];
+  related_factions: string[];
+  narrative_role: string;
+  current_status: string;
+  first_appearance_chapter?: number | null;
+  last_update_source: string;
+  is_canon: boolean;
+  created_at: string;
+  updated_at: string;
+}

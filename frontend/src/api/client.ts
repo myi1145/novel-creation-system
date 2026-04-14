@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, Genre, Project, SceneCard, TerminologyCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 export const api = {
@@ -78,6 +78,16 @@ export const api = {
   getTerminologyCard: (projectId: string, cardId: number) => http.get<TerminologyCard>(`/projects/${projectId}/terminology-cards/${cardId}`),
   createTerminologyCard: (projectId: string, payload: Dict) => http.post<TerminologyCard>(`/projects/${projectId}/terminology-cards`, payload),
   updateTerminologyCard: (projectId: string, cardId: number, payload: Dict) => http.patch<TerminologyCard>(`/projects/${projectId}/terminology-cards/${cardId}`, payload),
+
+  listFactionCards: (projectId: string) => http.get<FactionCard[]>(`/projects/${projectId}/faction-cards`),
+  getFactionCard: (projectId: string, cardId: number) => http.get<FactionCard>(`/projects/${projectId}/faction-cards/${cardId}`),
+  createFactionCard: (projectId: string, payload: Dict) => http.post<FactionCard>(`/projects/${projectId}/faction-cards`, payload),
+  updateFactionCard: (projectId: string, cardId: number, payload: Dict) => http.patch<FactionCard>(`/projects/${projectId}/faction-cards/${cardId}`, payload),
+
+  listLocationCards: (projectId: string) => http.get<LocationCard[]>(`/projects/${projectId}/location-cards`),
+  getLocationCard: (projectId: string, cardId: number) => http.get<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`),
+  createLocationCard: (projectId: string, payload: Dict) => http.post<LocationCard>(`/projects/${projectId}/location-cards`, payload),
+  updateLocationCard: (projectId: string, cardId: number, payload: Dict) => http.patch<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`, payload),
   listWorkflowRuns: (projectId: string) => http.get<Dict[]>(`/workflows/runs?project_id=${projectId}`),
   getWorkflowRunDetail: (workflowRunId: string) => http.get<Dict>(`/workflows/runs/${workflowRunId}`),
   pauseWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/pause', payload),
