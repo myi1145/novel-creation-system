@@ -123,6 +123,12 @@ def get_dependency_status(
     return success_response(data=result.model_dump(mode="json"), message="下游依赖状态获取成功")
 
 
+@router.get("/projects/{project_id}/chapters/{chapter_no}/release-readiness")
+def get_release_readiness(project_id: str, chapter_no: int, db: Session = Depends(get_db)) -> dict:
+    result = chapter_service.get_release_readiness(db=db, project_id=project_id, chapter_no=chapter_no)
+    return success_response(data=result.model_dump(mode="json"), message="发布前一致性验收结果获取成功")
+
+
 @router.post("/dependency-status/recompute")
 def recompute_dependencies(request: RecomputeDependenciesRequest, db: Session = Depends(get_db)) -> dict:
     result = chapter_service.recompute_dependencies(db=db, request=request)

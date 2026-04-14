@@ -48,6 +48,8 @@ export const api = {
     if (payload.scene_id) query.set('scene_id', payload.scene_id);
     return http.get<Dict>(`/chapters/dependency-status?${query.toString()}`);
   },
+  getReleaseReadiness: (projectId: string, chapterNo: number) =>
+    http.get<Dict>(`/chapters/projects/${projectId}/chapters/${chapterNo}/release-readiness`),
   recomputeDependencies: (payload: Dict) => http.post<Dict>('/chapters/dependency-status/recompute', payload),
   generateDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/generate', payload),
   reviseDraft: (payload: Dict) => http.post<ChapterDraft>('/chapters/drafts/revise', payload),

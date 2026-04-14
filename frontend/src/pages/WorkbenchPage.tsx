@@ -682,6 +682,7 @@ export function WorkbenchPage() {
           <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
           <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
           <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前一致性验收</Link>
         </div>
       </div>
 

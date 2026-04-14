@@ -99,3 +99,5 @@
 - `md/next_stage_decision_dependency_recompute/00~04` 作为“下游依赖失效与重跑治理阶段”已签收决策链，继续保留并用于追溯。
 - 当前阶段新增独立目录 `md/next_stage_decision_release_readiness/`，用于避免与上一阶段决策链混写。
 - 当前阶段口径为“立项收口”，不是“发布准入面板开发启动”。
+
+补充：已进入实现任务后，发布前一致性验收最小闭环（只读聚合接口 + 独立页面 + Workbench/Published 入口）已完成首版落地，后续按实现回归与验收结果持续迭代。

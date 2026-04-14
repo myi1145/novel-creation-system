@@ -338,6 +338,23 @@ class ChapterDependencyStatusResponse(BaseModel):
     items: list[DependencyStaleItem] = Field(default_factory=list)
 
 
+class ReleaseReadinessCheck(BaseModel):
+    key: str
+    status: str
+    title: str
+    message: str
+    next_action: str
+    target: str
+
+
+class ReleaseReadinessResponse(BaseModel):
+    project_id: str
+    chapter_no: int
+    overall_status: str
+    summary: str
+    checks: list[ReleaseReadinessCheck] = Field(default_factory=list)
+
+
 class RecomputeDependenciesRequest(BaseModel):
     project_id: str
     chapter_no: int | None = None
