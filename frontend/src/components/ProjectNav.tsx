@@ -6,6 +6,8 @@ const tabs = [
   ['genres', '题材装载'],
   ['canon', '正式设定快照'],
   ['objects', '对象库'],
+  ['character-cards', '角色卡'],
+  ['terminology-cards', '术语卡'],
   ['workbench', '创作工作台'],
   ['gates', '质量检查'],
   ['changesets', '变更提案'],

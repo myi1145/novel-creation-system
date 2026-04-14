@@ -25,6 +25,8 @@ npm run build
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
+- `/projects/:projectId/character-cards`
+- `/projects/:projectId/terminology-cards`
 - `/projects/:projectId/workbench`
 - `/projects/:projectId/blueprints/:blueprintId/edit`
 - `/projects/:projectId/scenes/:sceneId/edit`
@@ -174,3 +176,13 @@ npm run build
    - Markdown：`/api/v1/chapters/projects/{project_id}/chapters/{chapter_no}/published-reader/export.md`
    - txt：`/api/v1/chapters/projects/{project_id}/chapters/{chapter_no}/published-reader/export.txt`
 6. 本能力范围严格限定为**单章已发布成品阅读与导出**，不是整本书导出、不是 PDF/Word 导出，也不是出版排版系统。
+
+
+## 结构化设定卡槽（本轮最小闭环）
+
+- 角色卡入口：`/projects/:projectId/character-cards`
+- 术语卡入口：`/projects/:projectId/terminology-cards`
+- 角色卡用途：集中维护人物身份、性格关键词、关系备注与当前状态，减少跨章漂移。
+- 术语卡用途：维护修炼体系、阵法术语、世界观概念等固定说法，保证用词一致。
+- 本阶段仅支持人工创建/编辑，不做自动抽取、不做自动生成、不直接写 Canon。
+

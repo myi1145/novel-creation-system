@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CreativeObject, Genre, Project, SceneCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, Genre, Project, SceneCard, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 export const api = {
@@ -67,6 +67,17 @@ export const api = {
   manualEditDraft: (draftId: string, payload: Dict) => http.post<ChapterDraft>(`/chapters/drafts/${draftId}/manual-edit`, payload),
 
 
+
+
+  listCharacterCards: (projectId: string) => http.get<CharacterCard[]>(`/projects/${projectId}/character-cards`),
+  getCharacterCard: (projectId: string, cardId: number) => http.get<CharacterCard>(`/projects/${projectId}/character-cards/${cardId}`),
+  createCharacterCard: (projectId: string, payload: Dict) => http.post<CharacterCard>(`/projects/${projectId}/character-cards`, payload),
+  updateCharacterCard: (projectId: string, cardId: number, payload: Dict) => http.patch<CharacterCard>(`/projects/${projectId}/character-cards/${cardId}`, payload),
+
+  listTerminologyCards: (projectId: string) => http.get<TerminologyCard[]>(`/projects/${projectId}/terminology-cards`),
+  getTerminologyCard: (projectId: string, cardId: number) => http.get<TerminologyCard>(`/projects/${projectId}/terminology-cards/${cardId}`),
+  createTerminologyCard: (projectId: string, payload: Dict) => http.post<TerminologyCard>(`/projects/${projectId}/terminology-cards`, payload),
+  updateTerminologyCard: (projectId: string, cardId: number, payload: Dict) => http.patch<TerminologyCard>(`/projects/${projectId}/terminology-cards/${cardId}`, payload),
   listWorkflowRuns: (projectId: string) => http.get<Dict[]>(`/workflows/runs?project_id=${projectId}`),
   getWorkflowRunDetail: (workflowRunId: string) => http.get<Dict>(`/workflows/runs/${workflowRunId}`),
   pauseWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/pause', payload),
