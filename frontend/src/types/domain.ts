@@ -20,3 +20,36 @@ export interface ChapterWorkbenchState extends Dict {
   recovery_stage?: string;
   recovery_hint?: string;
 }
+
+
+export interface CharacterCard {
+  id: number;
+  project_id: string;
+  name: string;
+  aliases: string[];
+  role_position: string;
+  profile: string;
+  personality_keywords: string[];
+  relationship_notes: string;
+  current_status: string;
+  first_appearance_chapter?: number | null;
+  last_update_source: string;
+  is_canon: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TerminologyCard {
+  id: number;
+  project_id: string;
+  term: string;
+  term_type: string;
+  definition: string;
+  usage_rules: string;
+  examples: string[];
+  first_appearance_chapter?: number | null;
+  last_update_source: string;
+  is_canon: boolean;
+  created_at: string;
+  updated_at: string;
+}

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProjectLayout } from '../components/ProjectLayout';
 import { CanonPage } from '../pages/CanonPage';
 import { ChangesetsPage } from '../pages/ChangesetsPage';
+import { CharacterCardsPage } from '../pages/CharacterCardsPage';
 import { BlueprintEditorPage } from '../pages/BlueprintEditorPage';
 import { DraftEditorPage } from '../pages/DraftEditorPage';
 import { SceneEditorPage } from '../pages/SceneEditorPage';
@@ -15,6 +16,7 @@ import { PublishedChapterReaderPage } from '../pages/PublishedChapterReaderPage'
 import { PublishHistoryPage } from '../pages/PublishHistoryPage';
 import { ReleaseReadinessPage } from '../pages/ReleaseReadinessPage';
 import { VersionDiffPage } from '../pages/VersionDiffPage';
+import { TerminologyCardsPage } from '../pages/TerminologyCardsPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
 
@@ -29,6 +31,8 @@ export function AppRouter() {
         <Route path="genres" element={<GenresPage />} />
         <Route path="canon" element={<CanonPage />} />
         <Route path="objects" element={<ObjectsPage />} />
+        <Route path="character-cards" element={<CharacterCardsPage />} />
+        <Route path="terminology-cards" element={<TerminologyCardsPage />} />
         <Route path="workbench" element={<WorkbenchPage />} />
         <Route path="blueprints/:blueprintId/edit" element={<BlueprintEditorPage />} />
         <Route path="scenes/:sceneId/edit" element={<SceneEditorPage />} />

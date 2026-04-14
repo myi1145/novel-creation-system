@@ -471,3 +471,39 @@ class PublishRecordORM(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class StructuredCharacterCardORM(Base):
+    __tablename__ = "structured_character_cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    aliases: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    role_position: Mapped[str] = mapped_column(Text, nullable=False)
+    profile: Mapped[str] = mapped_column(Text, nullable=False)
+    personality_keywords: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    relationship_notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    current_status: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    first_appearance_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class TerminologyCardORM(Base):
+    __tablename__ = "terminology_cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    term: Mapped[str] = mapped_column(String(120), nullable=False)
+    term_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    definition: Mapped[str] = mapped_column(Text, nullable=False)
+    usage_rules: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    examples: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    first_appearance_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
