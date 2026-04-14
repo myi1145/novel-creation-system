@@ -1,6 +1,11 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+import json
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import ValidationError
 from app.db.session import get_db
 from app.schemas.project import CreateProjectRequest
 from app.schemas.structured_cards import (
@@ -30,6 +35,84 @@ def create_project(request: CreateProjectRequest, db: Session = Depends(get_db))
 def list_projects(db: Session = Depends(get_db)) -> dict:
     projects = [item.model_dump(mode="json") for item in project_service.list_projects(db=db)]
     return success_response(data=projects)
+
+
+@router.get("/{project_id}/structured-cards/export.json")
+def export_structured_cards_json(project_id: str, db: Session = Depends(get_db)) -> Response:
+    payload = structured_card_service.export_cards_json(db=db, project_id=project_id)
+    content = json.dumps(payload.model_dump(mode="json"), ensure_ascii=False, indent=2)
+    date_suffix = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"structured-cards-{project_id}-{date_suffix}.json"
+    return Response(
+        content=content,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{project_id}/structured-cards/import.json")
+async def import_structured_cards_json(
+    project_id: str,
+    file: UploadFile | None = File(default=None),
+    payload: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    parsed_payload: dict
+    if file is not None:
+        raw_content = (await file.read()).decode("utf-8")
+        try:
+            parsed_payload = json.loads(raw_content)
+        except json.JSONDecodeError as exc:
+            raise ValidationError("JSON 文件格式非法") from exc
+    elif payload:
+        try:
+            parsed_payload = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise ValidationError("payload 不是合法 JSON") from exc
+    else:
+        raise ValidationError("请提供 JSON 文件或 payload")
+
+    if "cards" not in parsed_payload:
+        raise ValidationError("JSON 必须包含 cards 字段")
+
+    report = structured_card_service.import_cards_json(db=db, project_id=project_id, payload=parsed_payload)
+    return success_response(data=report.model_dump(mode="json"), message="导入完成")
+
+
+@router.get("/{project_id}/structured-cards/{card_type}/export.csv")
+def export_structured_cards_csv(project_id: str, card_type: str, db: Session = Depends(get_db)) -> Response:
+    content = structured_card_service.export_cards_csv(db=db, project_id=project_id, card_type=card_type)
+    date_suffix = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"structured-cards-{project_id}-{card_type}-{date_suffix}.csv"
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{project_id}/structured-cards/{card_type}/import.csv")
+async def import_structured_cards_csv(
+    project_id: str,
+    card_type: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    content = (await file.read()).decode("utf-8")
+    report = structured_card_service.import_cards_csv(db=db, project_id=project_id, card_type=card_type, content=content)
+    return success_response(data=report.model_dump(mode="json"), message="导入完成")
+
+
+@router.get("/{project_id}/structured-cards/{card_type}/template.csv")
+def download_structured_cards_template(project_id: str, card_type: str, db: Session = Depends(get_db)) -> Response:
+    structured_card_service._ensure_project_exists(db=db, project_id=project_id)
+    content = structured_card_service.build_csv_template(card_type=card_type)
+    filename = f"structured-cards-{card_type}-template.csv"
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{project_id}/character-cards")

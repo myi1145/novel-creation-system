@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -158,3 +159,46 @@ class LocationCardResponse(LocationCardBase):
     is_canon: bool
     created_at: datetime
     updated_at: datetime
+
+
+class StructuredCardsExportCards(BaseModel):
+    characters: list[CharacterCardCreate] = Field(default_factory=list)
+    terminologies: list[TerminologyCardCreate] = Field(default_factory=list)
+    factions: list[FactionCardCreate] = Field(default_factory=list)
+    locations: list[LocationCardCreate] = Field(default_factory=list)
+
+
+class StructuredCardsExportResponse(BaseModel):
+    project_id: str
+    exported_at: datetime
+    version: str = "1.0"
+    cards: StructuredCardsExportCards
+
+
+class StructuredCardImportError(BaseModel):
+    row: int
+    field: str
+    message: str
+
+
+class StructuredCardImportSkipped(BaseModel):
+    row: int
+    reason: str
+
+
+class StructuredCardImportReport(BaseModel):
+    card_type: str
+    total_rows: int
+    created_count: int
+    skipped_count: int
+    error_count: int
+    errors: list[StructuredCardImportError] = Field(default_factory=list)
+    skipped: list[StructuredCardImportSkipped] = Field(default_factory=list)
+
+
+class StructuredCardsImportJsonPayload(BaseModel):
+    cards: StructuredCardsExportCards
+
+
+class StructuredCardsImportJsonRequest(BaseModel):
+    payload: StructuredCardsImportJsonPayload | None = None

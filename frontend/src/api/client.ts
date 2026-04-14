@@ -2,6 +2,36 @@ import { http } from './http';
 import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
+
+export type StructuredCardType = 'characters' | 'terminologies' | 'factions' | 'locations';
+export interface StructuredCardImportError { row: number; field: string; message: string; }
+export interface StructuredCardImportSkipped { row: number; reason: string; }
+export interface StructuredCardImportReport {
+  card_type: 'all' | StructuredCardType;
+  total_rows: number;
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+  errors: StructuredCardImportError[];
+  skipped: StructuredCardImportSkipped[];
+}
+
+async function downloadBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'}${path}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.blob();
+}
+
+async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'}${path}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  return payload.data as T;
+}
+
 export const api = {
   listProjects: () => http.get<Project[]>('/projects'),
   createProject: (payload: { project_name: string; premise: string; genre_id?: string }) => http.post<Project>('/projects', payload),
@@ -88,6 +118,27 @@ export const api = {
   getLocationCard: (projectId: string, cardId: number) => http.get<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`),
   createLocationCard: (projectId: string, payload: Dict) => http.post<LocationCard>(`/projects/${projectId}/location-cards`, payload),
   updateLocationCard: (projectId: string, cardId: number, payload: Dict) => http.patch<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`, payload),
+
+
+  exportStructuredCardsJson: (projectId: string) => downloadBlob(`/projects/${projectId}/structured-cards/export.json`),
+  importStructuredCardsJson: async (projectId: string, fileOrPayload: File | Dict) => {
+    const form = new FormData();
+    if (fileOrPayload instanceof File) {
+      form.append('file', fileOrPayload);
+    } else {
+      form.append('payload', JSON.stringify(fileOrPayload));
+    }
+    return postFormData<StructuredCardImportReport>(`/projects/${projectId}/structured-cards/import.json`, form);
+  },
+  exportStructuredCardsCsv: (projectId: string, cardType: StructuredCardType) =>
+    downloadBlob(`/projects/${projectId}/structured-cards/${cardType}/export.csv`),
+  importStructuredCardsCsv: async (projectId: string, cardType: StructuredCardType, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return postFormData<StructuredCardImportReport>(`/projects/${projectId}/structured-cards/${cardType}/import.csv`, form);
+  },
+  downloadStructuredCardsCsvTemplate: (projectId: string, cardType: StructuredCardType) =>
+    downloadBlob(`/projects/${projectId}/structured-cards/${cardType}/template.csv`),
   listWorkflowRuns: (projectId: string) => http.get<Dict[]>(`/workflows/runs?project_id=${projectId}`),
   getWorkflowRunDetail: (workflowRunId: string) => http.get<Dict>(`/workflows/runs/${workflowRunId}`),
   pauseWorkflowRun: (payload: Dict) => http.post<Dict>('/workflows/runs/pause', payload),

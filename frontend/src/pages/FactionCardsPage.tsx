@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
+import { StructuredCardImportExportPanel } from '../components/StructuredCardImportExportPanel';
 import type { FactionCard } from '../types/domain';
 
 const defaultForm = {
@@ -87,6 +88,7 @@ export function FactionCardsPage() {
 
   return <div>
     <h2>势力卡</h2>
+    <StructuredCardImportExportPanel projectId={projectId} cardType="factions" title="导入导出" showJsonControls={false} onImported={load} />
     <div className="panel">
       用于维护宗门、王朝、组织、族群等设定，稳定势力立场、目标与阶段状态。当前仅支持人工维护，不会自动写入正式设定。
     </div>
