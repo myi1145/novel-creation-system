@@ -79,7 +79,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 - 已有检测能力不等于自动修复闭环：并非所有问题都会自动进入稳定重写链路；
 - 默认配置仍偏联调（如 `mock` provider + 可 fallback）；真实模型效果依赖外部环境与参数；
 - 默认回归仍以 mock provider 为主；真实 provider 需单独配置并按 smoke / acceptance 入口验收，不能视为开箱即跑；
-- 当前阶段（以 `md/status/current_stage_handoff.md` 为准）为“发布章节成品阅读与导出立项（docs-only）”；工程能力建设仍按既有基线持续演进，不应高估为 fully autonomous production system；
+- 当前阶段（以 `md/status/current_stage_handoff.md` 为准）为“结构化设定卡槽体系立项（docs-only）”；；
 - 已收口 Alembic 迁移链路，`AUTO_CREATE_TABLES` 仅保留开发兜底语义；
 - 运维级能力（多环境发布策略、长期稳定性基线、平台化治理）仍有限。
 
