@@ -43,6 +43,9 @@ from app.schemas.chapter import (
     DependencyStaleItem,
     PublishedChapter,
     PublishRecord,
+    PublishHistoryItem,
+    PublishHistoryRelation,
+    PublishHistoryResponse,
     ReleaseReadinessCheck,
     ReleaseReadinessResponse,
     ReviseDraftRequest,
@@ -145,6 +148,23 @@ def _to_published_chapter_schema(entity: PublishedChapterORM) -> PublishedChapte
 
 def _to_publish_record_schema(entity: PublishRecordORM) -> PublishRecord:
     return PublishRecord.model_validate(entity).model_copy(update={"source_type": "publish_service", "source_ref": entity.published_chapter_id})
+
+
+def _to_publish_history_item(record: PublishRecordORM, published_chapter: PublishedChapterORM | None) -> PublishHistoryItem:
+    published_at = (published_chapter.published_at if published_chapter is not None else None) or record.created_at
+    summary = (record.notes or "").strip()
+    if not summary and published_chapter is not None and published_chapter.title:
+        summary = f"发布章节《{published_chapter.title}》"
+    if not summary:
+        summary = "本次发布未填写摘要。"
+    return PublishHistoryItem(
+        publish_record_id=record.id,
+        published_at=published_at,
+        draft_ref_id=record.draft_id,
+        changeset_ref_id=record.changeset_id,
+        summary=summary,
+        status=record.publish_status,
+    )
 
 
 def _build_stale_key(payload: dict) -> str:
@@ -1352,6 +1372,86 @@ class ChapterService:
             query = query.filter(PublishRecordORM.project_id == project_id)
         items = query.order_by(PublishRecordORM.created_at.desc()).all()
         return [_to_publish_record_schema(item) for item in items]
+
+    def _resolve_working_state_updated_at(self, db: Session, *, project_id: str, chapter_no: int, goal: ChapterGoalORM) -> datetime | None:
+        timestamps: list[datetime] = [goal.updated_at]
+        selected_blueprint = (
+            db.query(ChapterBlueprintORM)
+            .filter(
+                ChapterBlueprintORM.project_id == project_id,
+                ChapterBlueprintORM.chapter_goal_id == goal.id,
+                ChapterBlueprintORM.selected.is_(True),
+            )
+            .first()
+        )
+        if selected_blueprint is not None:
+            timestamps.append(selected_blueprint.updated_at)
+            scenes = (
+                db.query(SceneCardORM)
+                .filter(SceneCardORM.project_id == project_id, SceneCardORM.blueprint_id == selected_blueprint.id)
+                .all()
+            )
+            timestamps.extend([scene.updated_at for scene in scenes if scene.updated_at is not None])
+
+            drafts = (
+                db.query(ChapterDraftORM)
+                .filter(ChapterDraftORM.project_id == project_id, ChapterDraftORM.blueprint_id == selected_blueprint.id)
+                .all()
+            )
+            timestamps.extend([draft.updated_at for draft in drafts if draft.updated_at is not None and draft.status != "published"])
+        if not timestamps:
+            return None
+        return max(timestamps)
+
+    def get_publish_history(self, db: Session, *, project_id: str, chapter_no: int) -> PublishHistoryResponse:
+        goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+        if goal is None:
+            raise NotFoundError("章节目标不存在")
+
+        rows = (
+            db.query(PublishRecordORM, PublishedChapterORM)
+            .join(PublishedChapterORM, PublishRecordORM.published_chapter_id == PublishedChapterORM.id)
+            .filter(
+                PublishRecordORM.project_id == project_id,
+                PublishedChapterORM.chapter_no == chapter_no,
+            )
+            .order_by(PublishedChapterORM.published_at.desc(), PublishRecordORM.created_at.desc())
+            .all()
+        )
+        history = [_to_publish_history_item(record=item[0], published_chapter=item[1]) for item in rows]
+        latest_published = history[0] if history else None
+
+        if latest_published is None:
+            relation = PublishHistoryRelation(status="never_published", message="本章还没有正式发布记录。")
+        else:
+            latest_working_updated_at = self._resolve_working_state_updated_at(
+                db=db,
+                project_id=project_id,
+                chapter_no=chapter_no,
+                goal=goal,
+            )
+            if latest_working_updated_at is not None and latest_working_updated_at > latest_published.published_at:
+                relation = PublishHistoryRelation(
+                    status="work_in_progress_after_publish",
+                    message="最近一次发布后，你又更新了本章内容，建议评估是否重新发布。",
+                )
+            else:
+                relation = PublishHistoryRelation(
+                    status="up_to_date",
+                    message="当前工作进度与最近发布版本一致，可按需继续创作或保持现状。",
+                )
+
+        return PublishHistoryResponse(
+            project_id=project_id,
+            chapter_no=chapter_no,
+            latest_published=latest_published,
+            working_state_relation=relation,
+            history=history,
+        )
 
     def generate_published_chapter_summary(self, db: Session, request: GenerateChapterSummaryRequest):
         return chapter_summary_service.generate_for_published(db=db, request=request, commit=True)

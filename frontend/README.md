@@ -33,6 +33,7 @@ npm run build
 - `/projects/:projectId/changesets`
 - `/projects/:projectId/published`
 - `/projects/:projectId/chapters/:chapterNo/release-readiness`
+- `/projects/:projectId/chapters/:chapterNo/publish-history`
 - `/projects/:projectId/workflows`
 
 ## 说明
@@ -102,3 +103,14 @@ npm run build
    - `needs_attention`
 5. 每个检查项都提供说明与下一步 CTA，用于跳转到 Workbench / Gate / ChangeSet / Published 对应页面继续处理。
 6. 该页面定位为“提示与准入建议”，不是硬阻断发布：不会自动修复问题，不会自动重跑，不会自动 apply ChangeSet，也不会自动发布。
+
+## 章节发布历史与版本追踪（本轮新增）
+
+1. 新增页面路由：`/projects/:projectId/chapters/:chapterNo/publish-history`。
+2. 入口文案统一为「章节发布历史」，已接入 `WorkbenchPage`、`PublishedPage`、`ReleaseReadinessPage`。
+3. 页面展示三块核心信息：
+   - 最近一次发布记录（发布时间、来源草稿、来源变更提案、最小摘要、状态）。
+   - 当前工作态与最近发布态关系提示（`never_published / up_to_date / work_in_progress_after_publish`）。
+   - 本章历史发布列表（按发布时间倒序）。
+4. 若本章未发布，页面会明确提示「本章还没有正式发布记录。」。
+5. 该能力定位是“版本追踪与状态提示”，不是版本回滚系统：不提供回滚按钮、不做复杂 diff、不自动重新发布。
