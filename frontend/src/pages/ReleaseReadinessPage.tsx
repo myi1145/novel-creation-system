@@ -69,7 +69,7 @@ export function ReleaseReadinessPage() {
   return (
     <div>
       <h2>发布前检查</h2>
-      <div className="panel">用于汇总本章发布前是否还有未处理问题。</div>
+      <div className="panel">用于汇总本章发布前是否还有未处理问题。若显示“需要先处理问题”，请按检查项 CTA 逐项处理。</div>
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
       {!isLoading && !error && !data && <EmptyState text="尚未生成发布前检查，请先回发布章节页面选择章节后进入。" />}
@@ -97,8 +97,8 @@ export function ReleaseReadinessPage() {
       <div className="panel">
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回创作工作台</Link>
-          <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
-          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/publish-history`}>章节发布历史</Link>
+          <Link to={`/projects/${projectId}/published`}>下一步：回发布章节</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/publish-history`}>发布后：章节发布历史</Link>
         </div>
       </div>
     </div>

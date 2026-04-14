@@ -73,7 +73,7 @@ export function ChangesetsPage() {
   return (
     <div>
       <h2>变更提案</h2>
-      <div className="panel">用于确认哪些内容要写入正式设定。</div>
+      <div className="panel">用于确认哪些内容要写入正式设定。建议顺序：先生成提案，再通过/写入，然后去发布章节。</div>
       <div className="panel">
         <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder="请输入草稿编号" />
         <button
@@ -194,7 +194,7 @@ export function ChangesetsPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/objects`}>回对象页</Link>
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/published`}>发布章节</Link>
+          <Link to={`/projects/${projectId}/published`}>下一步：发布章节</Link>
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
         </div>
       </div>

@@ -91,7 +91,7 @@ export function DraftEditorPage() {
       <div className="panel">
         <div>在这里直接修改章节正文，并记录修订原因。</div>
         <div>当前状态：{status || '-'}</div>
-        <div>保存后请回到质量检查重新审查，再继续变更提案与发布章节。</div>
+        <div>建议顺序：保存草稿 → 质量检查 → 变更提案 → 发布章节。</div>
       </div>
       {isLoading ? (
         <LoadingState text="草稿加载中..." />

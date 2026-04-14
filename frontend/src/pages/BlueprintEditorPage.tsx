@@ -165,7 +165,7 @@ export function BlueprintEditorPage() {
   return (
     <div>
       <h2>章节蓝图人工修订</h2>
-      <div className="panel">在这里调整本章剧情方向，再继续生成场景与草稿。</div>
+      <div className="panel">在这里调整本章剧情方向。保存后建议顺序：场景安排 → 章节草稿 → 质量检查。</div>
 
       <div className="panel">
         <label>
@@ -218,9 +218,9 @@ export function BlueprintEditorPage() {
         <div>已生成场景数：{sceneIds.length}</div>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>查看质量检查</Link>
-          <Link to={`/projects/${projectId}/changesets`}>查看变更提案</Link>
-          <Link to={`/projects/${projectId}/published`}>发布章节</Link>
+          <Link to={`/projects/${projectId}/gates`}>下一步：质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>下一步：变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>下一步：发布章节</Link>
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>

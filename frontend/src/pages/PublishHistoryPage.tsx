@@ -68,7 +68,7 @@ export function PublishHistoryPage() {
   return (
     <div>
       <h2>章节发布历史</h2>
-      <div className="panel">用于查看本章每次发布的时间、来源与记录。</div>
+      <div className="panel">用于查看本章每次发布的时间、来源与记录，并继续进入“版本差异与重发建议”或“阅读已发布章节”。</div>
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
 
@@ -130,8 +130,8 @@ export function PublishHistoryPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/release-readiness`}>回发布前检查</Link>
-          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/version-diff`}>版本差异与重发建议</Link>
-          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/published-reader`}>阅读已发布章节</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/version-diff`}>下一步：版本差异与重发建议</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/published-reader`}>下一步：阅读已发布章节</Link>
           <Link to={`/projects/${projectId}/workbench`}>回创作工作台</Link>
         </div>
       </div>

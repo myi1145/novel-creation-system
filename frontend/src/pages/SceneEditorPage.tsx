@@ -148,7 +148,7 @@ export function SceneEditorPage() {
   return (
     <div>
       <h2>场景安排人工修订</h2>
-      <div className="panel">在这里调整具体场景安排，再重新生成草稿。</div>
+      <div className="panel">在这里调整具体场景安排。保存后建议先重新生成草稿，再继续质量检查。</div>
       <div className="panel">
         <label>
           场景目标
@@ -201,9 +201,9 @@ export function SceneEditorPage() {
         </button>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>查看质量检查</Link>
-          <Link to={`/projects/${projectId}/changesets`}>查看变更提案</Link>
-          <Link to={`/projects/${projectId}/published`}>发布章节</Link>
+          <Link to={`/projects/${projectId}/gates`}>下一步：质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>下一步：变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>下一步：发布章节</Link>
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>

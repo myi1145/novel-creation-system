@@ -486,7 +486,7 @@ export function WorkbenchPage() {
   return (
     <div>
       <h2>创作工作台</h2>
-      <div className="panel">在这里推进本章从蓝图、场景、草稿到发布的完整流程。</div>
+      <div className="panel">作者主路径入口：在这里按“蓝图 → 场景 → 草稿 → 质量检查 → 变更提案 → 发布章节”推进。</div>
       <div className="panel">步骤：{STEPS.join(' → ')}</div>
       <div className="panel">
         <h3>下游内容可能已过期</h3>
@@ -666,7 +666,7 @@ export function WorkbenchPage() {
         <h3>最近动作结果</h3>
         <div>上一次执行：{lastAction || '-'}</div>
         <div>结果摘要：{lastActionResultSummary || '-'}</div>
-        <div>建议下一步：{draftId ? '进入质量检查 / 变更提案 / 发布章节页面继续流程' : blueprintId ? '可继续生成场景安排或章节草稿' : goalId ? '可继续生成并选择章节蓝图' : '先创建章节目标'}</div>
+        <div>建议下一步：{draftId ? '先去质量检查，再去变更提案，最后发布章节' : blueprintId ? '继续生成场景安排或章节草稿' : goalId ? '继续生成并选择章节蓝图' : '先创建本章目标'}</div>
       </div>
 
       <div className="panel">
@@ -676,9 +676,9 @@ export function WorkbenchPage() {
           {blueprintId ? <Link to={`/projects/${projectId}/blueprints/${blueprintId}/edit`}>人工修订蓝图</Link> : null}
           {sceneIds[0] ? <Link to={`/projects/${projectId}/scenes/${sceneIds[0]}/edit`}>人工修订场景</Link> : null}
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
-          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
-          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          <Link to={`/projects/${projectId}/gates`}>下一步：质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>下一步：变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>下一步：发布章节</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前检查</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/publish-history`}>章节发布历史</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/version-diff`}>版本差异与重发建议</Link>
