@@ -59,7 +59,10 @@ async def import_structured_cards_json(
 ) -> dict:
     parsed_payload: dict
     if file is not None:
-        raw_content = (await file.read()).decode("utf-8")
+        try:
+            raw_content = (await file.read()).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValidationError("JSON 文件必须为 UTF-8 编码") from exc
         try:
             parsed_payload = json.loads(raw_content)
         except json.JSONDecodeError as exc:
@@ -98,7 +101,10 @@ async def import_structured_cards_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict:
-    content = (await file.read()).decode("utf-8")
+    try:
+        content = (await file.read()).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValidationError("CSV 文件必须为 UTF-8 编码") from exc
     report = structured_card_service.import_cards_csv(db=db, project_id=project_id, card_type=card_type, content=content)
     return success_response(data=report.model_dump(mode="json"), message="导入完成")
 
