@@ -22,6 +22,7 @@ npm run build
 - `/projects`
 - `/projects/:projectId`（默认重定向到 `/projects/:projectId/overview`）
 - `/projects/:projectId/overview`
+- `/projects/:projectId/story-planning`
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
@@ -223,3 +224,20 @@ npm run build
 - 当前不支持 Excel 导入导出。
 - 当前不支持 Markdown 导入。
 - 当前不支持从正文自动抽取或 LLM 自动建卡。
+
+
+## 全书规划（本轮新增）
+
+- 入口：`/projects/:projectId/story-planning`。
+- 用途：人工维护整部小说的全书级信息，作为后续章节创作参考。
+- 四个编辑区：
+  - 全书世界观
+  - 全书主线大纲
+  - 分卷 / 阶段规划
+  - 核心设定种子摘要
+- 当前阶段边界：
+  - 不会自动生成卡槽候选
+  - 不会写入 Canon
+  - 不会生成 ChangeSet
+- 后续阶段才考虑：卡槽种子生成与章节蓝图输入接入。
+

@@ -17,6 +17,7 @@ import { PublishedPage } from '../pages/PublishedPage';
 import { PublishedChapterReaderPage } from '../pages/PublishedChapterReaderPage';
 import { PublishHistoryPage } from '../pages/PublishHistoryPage';
 import { ReleaseReadinessPage } from '../pages/ReleaseReadinessPage';
+import { StoryPlanningPage } from '../pages/StoryPlanningPage';
 import { VersionDiffPage } from '../pages/VersionDiffPage';
 import { TerminologyCardsPage } from '../pages/TerminologyCardsPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
@@ -30,6 +31,7 @@ export function AppRouter() {
       <Route path="/projects/:projectId" element={<ProjectLayout />}>
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
+        <Route path="story-planning" element={<StoryPlanningPage />} />
         <Route path="genres" element={<GenresPage />} />
         <Route path="canon" element={<CanonPage />} />
         <Route path="objects" element={<ObjectsPage />} />

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -29,6 +29,27 @@ class ProjectORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
 
+
+
+
+
+class StoryPlanningORM(Base):
+    __tablename__ = "story_plannings"
+    __table_args__ = (
+        UniqueConstraint("project_id", name="uq_story_plannings_project"),
+        CheckConstraint("planning_status in ('draft', 'confirmed')", name="ck_story_plannings_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_id)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    worldview: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    main_outline: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    volume_plan: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    core_seed_summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    planning_status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
 
 class WorkflowRunORM(Base):
