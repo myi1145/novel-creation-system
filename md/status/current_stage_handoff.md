@@ -65,6 +65,8 @@
 
 **建立并固化“章节发布历史与版本追踪”决策文档链（00~04），作为后续是否进入实现任务的上游依据。**
 
+当前固定阅读入口为：`md/next_stage_decision_publish_history/00~04`。
+
 当前阶段约束文档位于：
 - `md/next_stage_decision_publish_history/00_章节发布历史与版本追踪候选方向与问题定义.md`
 - `md/next_stage_decision_publish_history/01_章节发布历史与版本追踪方向确认.md`
