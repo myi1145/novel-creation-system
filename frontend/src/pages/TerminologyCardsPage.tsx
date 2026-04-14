@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
+import { StructuredCardImportExportPanel } from '../components/StructuredCardImportExportPanel';
 import type { TerminologyCard } from '../types/domain';
 
 const defaultForm = {
@@ -77,6 +78,7 @@ export function TerminologyCardsPage() {
 
   return <div>
     <h2>术语卡</h2>
+    <StructuredCardImportExportPanel projectId={projectId} cardType="terminologies" title="导入导出" showJsonControls={false} onImported={load} />
     <div className="panel">
       用于维护固定概念、专有名词与使用规则，保证章节内外术语一致。当前仅支持人工维护，不会自动写入正式设定。
     </div>

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
+import { StructuredCardImportExportPanel } from '../components/StructuredCardImportExportPanel';
 import type { CharacterCard } from '../types/domain';
 
 const defaultForm = {
@@ -81,6 +82,7 @@ export function CharacterCardsPage() {
 
   return <div>
     <h2>角色卡</h2>
+    <StructuredCardImportExportPanel projectId={projectId} cardType="characters" title="导入导出" showJsonControls={true} onImported={load} />
     <div className="panel">
       用于维护人物身份、性格、关系与当前状态，减少跨章节人物设定漂移。当前仅支持人工维护，不会自动写入正式设定。 
     </div>

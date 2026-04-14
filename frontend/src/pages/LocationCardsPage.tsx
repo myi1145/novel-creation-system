@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
+import { StructuredCardImportExportPanel } from '../components/StructuredCardImportExportPanel';
 import type { LocationCard } from '../types/domain';
 
 const defaultForm = {
@@ -85,6 +86,7 @@ export function LocationCardsPage() {
 
   return <div>
     <h2>地点卡</h2>
+    <StructuredCardImportExportPanel projectId={projectId} cardType="locations" title="导入导出" showJsonControls={false} onImported={load} />
     <div className="panel">
       用于维护城镇、宗门、秘境、禁地等空间设定，稳定地理信息与剧情作用。当前仅支持人工维护，不会自动写入正式设定。
     </div>
