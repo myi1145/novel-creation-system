@@ -125,6 +125,7 @@ export function PublishHistoryPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/release-readiness`}>回发布前检查</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/version-diff`}>版本差异与重发建议</Link>
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
         </div>
       </div>

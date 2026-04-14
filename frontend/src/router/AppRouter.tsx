@@ -13,6 +13,7 @@ import { ProjectsPage } from '../pages/ProjectsPage';
 import { PublishedPage } from '../pages/PublishedPage';
 import { PublishHistoryPage } from '../pages/PublishHistoryPage';
 import { ReleaseReadinessPage } from '../pages/ReleaseReadinessPage';
+import { VersionDiffPage } from '../pages/VersionDiffPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
 
@@ -36,6 +37,7 @@ export function AppRouter() {
         <Route path="published" element={<PublishedPage />} />
         <Route path="chapters/:chapterNo/release-readiness" element={<ReleaseReadinessPage />} />
         <Route path="chapters/:chapterNo/publish-history" element={<PublishHistoryPage />} />
+        <Route path="chapters/:chapterNo/version-diff" element={<VersionDiffPage />} />
         <Route path="workflows" element={<WorkflowsPage />} />
       </Route>
     </Routes>

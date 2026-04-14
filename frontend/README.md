@@ -34,6 +34,7 @@ npm run build
 - `/projects/:projectId/published`
 - `/projects/:projectId/chapters/:chapterNo/release-readiness`
 - `/projects/:projectId/chapters/:chapterNo/publish-history`
+- `/projects/:projectId/chapters/:chapterNo/version-diff`
 - `/projects/:projectId/workflows`
 
 ## 说明
@@ -114,3 +115,15 @@ npm run build
    - 本章历史发布列表（按发布时间倒序）。
 4. 若本章未发布，页面会明确提示「本章还没有正式发布记录。」。
 5. 该能力定位是“版本追踪与状态提示”，不是版本回滚系统：不提供回滚按钮、不做复杂 diff、不自动重新发布。
+
+## 轻量版本差异与重发建议（本轮新增）
+
+1. 新增页面路由：`/projects/:projectId/chapters/:chapterNo/version-diff`。
+2. 入口文案统一为「版本差异与重发建议」，已接入 `WorkbenchPage`、`PublishedPage`、`PublishHistoryPage`。
+3. 页面聚合展示：
+   - 对比总状态：`never_published / no_current_work / comparable`
+   - 重发建议：`cannot_compare / republish_not_needed / republish_recommended`
+   - 最近发布版引用信息与当前工作态草稿引用信息
+   - 轻量指标：`length_delta / paragraph_delta / change_level / changed_summary`
+   - 检查项列表（长度、段落、来源、发布时间等）
+4. 该能力只做“轻量差异提示 + 重发建议”，不是全文 diff、不是版本回滚系统、不是自动重发系统。
