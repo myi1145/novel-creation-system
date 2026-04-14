@@ -2,12 +2,12 @@ import { Link, useParams } from 'react-router-dom';
 
 const tabs = [
   ['overview', '项目概览'],
-  ['workflows', '运行中心'],
+  ['workflows', '运行记录'],
   ['genres', '题材装载'],
-  ['canon', 'Canon 快照'],
+  ['canon', '正式设定快照'],
   ['objects', '对象库'],
   ['workbench', '创作工作台'],
-  ['gates', '质量检查结果图表'],
+  ['gates', '质量检查'],
   ['changesets', '变更提案'],
   ['published', '发布章节'],
 ];

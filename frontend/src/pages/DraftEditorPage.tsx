@@ -5,7 +5,7 @@ import { ActionFailure, ActionSuccess, LoadingState } from '../components/Status
 
 function toLoadErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
-    return `草稿加载失败，请刷新后重试；若仍失败，请确认 draft_id 是否有效。`;
+    return '加载失败，请稍后重试。若仍失败，请从创作工作台重新进入该草稿。';
   }
   return '草稿加载失败，请稍后重试。';
 }
@@ -89,24 +89,24 @@ export function DraftEditorPage() {
     <div>
       <h2>章节草稿人工修订</h2>
       <div className="panel">
-        <div>你正在编辑的章节草稿：draft_id={draftId || '-'}（project_id={projectId || '-'}）</div>
+        <div>在这里直接修改章节正文，并记录修订原因。</div>
         <div>当前状态：{status || '-'}</div>
-        <div>本页用于生成和人工修订正文；保存后请回到质量检查重审，再继续变更提案和发布章节。</div>
+        <div>保存后请回到质量检查重新审查，再继续变更提案与发布章节。</div>
       </div>
       {isLoading ? (
         <LoadingState text="草稿加载中..." />
       ) : (
         <form className="panel" onSubmit={onSave}>
           <label>
-            draft.content（草稿正文）
+            草稿正文
             <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={18} style={{ width: '100%' }} />
           </label>
           <label>
-            edit_reason（人工修订原因）
+            修订原因（必填）
             <input value={editReason} onChange={(e) => setEditReason(e.target.value)} placeholder="例如：修正人物动机冲突，并补足与上一章衔接" />
           </label>
-          <div>说明：`edit_reason`（修订原因）会进入最小审计信息，供后续质量检查和变更提案判断修订上下文。</div>
-          <button type="submit" disabled={isSaving}>{isSaving ? '保存中...' : '保存人工修订'}</button>
+          <div>说明：修订原因会用于后续质量检查与变更提案判断本次改动背景。</div>
+          <button type="submit" disabled={isSaving}>{isSaving ? '保存中...' : '保存人工修订草稿'}</button>
         </form>
       )}
       {feedback && <ActionSuccess text={feedback} />}

@@ -300,7 +300,7 @@ export function WorkbenchPage() {
     try {
       await api.recomputeDependencies({ project_id: projectId, chapter_no: chapterNo, action, confirmed_by: 'frontend_user' });
       await refreshDependencyStatus();
-      setFeedback(action === 'recompute_scenes' ? '已确认重跑场景拆解。' : '已确认重跑草稿生成。');
+      setFeedback(action === 'recompute_scenes' ? '已确认重新生成场景安排。' : '已确认重新生成草稿。');
     } catch (e) {
       setError(e instanceof Error ? e.message : '下游重跑失败');
     } finally {
@@ -375,7 +375,7 @@ export function WorkbenchPage() {
 
   const selectCandidateInUi = (candidateId: string) => {
     setBlueprintId(candidateId);
-    setFeedback(`已回填 blueprint_id：${candidateId}`);
+    setFeedback('已选中章节蓝图候选。');
     setError('');
   };
 
@@ -398,7 +398,7 @@ export function WorkbenchPage() {
             scene_count: ids.length,
             sample_titles: sampleTitles,
           });
-          setLastActionResultSummary(`场景拆解完成，生成 scene_ids 数量：${ids.length}`);
+          setLastActionResultSummary(`场景安排生成完成，共 ${ids.length} 个场景。`);
           return scenes;
         } catch (e) {
           const message = e instanceof Error ? e.message : '场景拆解失败';
@@ -429,7 +429,7 @@ export function WorkbenchPage() {
             status: String(d.status || '-'),
             summary: summary || '（未返回草稿摘要）',
           });
-          setLastActionResultSummary(`草稿生成完成，draft_id：${d.id}`);
+          setLastActionResultSummary('章节草稿生成完成。');
           return d;
         } catch (e) {
           const message = e instanceof Error ? e.message : '草稿生成失败';
@@ -452,7 +452,7 @@ export function WorkbenchPage() {
           const revised = await api.reviseDraft({
             project_id: projectId,
             draft_id: draftId,
-            revision_instruction: '按 Gate 建议修订',
+            revision_instruction: '按质量检查建议修订',
             revised_by: 'frontend_user',
           });
           const revisedDraftId = String(revised.id || draftId);
@@ -466,7 +466,7 @@ export function WorkbenchPage() {
             status: String(revised.status || '-'),
             summary: revisedSummary || '（未返回修订摘要）',
           });
-          setLastActionResultSummary(`草稿修订完成，draft_id：${String(revised.id || draftId)}，status：${String(revised.status || '-')}`);
+          setLastActionResultSummary(`草稿修订完成，当前状态：${String(revised.status || '-')}`);
           return revised;
         } catch (e) {
           const message = e instanceof Error ? e.message : '草稿修订失败';
@@ -486,61 +486,57 @@ export function WorkbenchPage() {
   return (
     <div>
       <h2>创作工作台</h2>
-      <div className="panel">用于查看当前处于哪一步，并按“目标 → 章节蓝图 → 场景安排 → 章节草稿 → 质量检查 → 变更提案 → 发布章节”继续推进。</div>
+      <div className="panel">在这里推进本章从蓝图、场景、草稿到发布的完整流程。</div>
       <div className="panel">步骤：{STEPS.join(' → ')}</div>
       <div className="panel">
         <h3>下游内容可能已过期</h3>
         <button onClick={() => void refreshDependencyStatus()} disabled={isRefreshingDependency}>
-          {isRefreshingDependency ? '刷新中...' : '刷新下游状态'}
+          {isRefreshingDependency ? '检查中...' : '检查是否有需要重做的步骤'}
         </button>
         {dependencyItems.length === 0 ? <div>当前章节没有检测到下游内容过期项。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
-                来源={String(item.source_type || '-')}，影响={String(item.affected_type || '-')}，原因={String(item.reason || '-')}
+                影响步骤：{String(item.affected_type || '-')}；原因：{String(item.reason || '-')}
               </li>
             ))}
           </ul>
         )}
         <button onClick={() => void recomputeDependency('recompute_scenes')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
-          {isRecomputingDependency ? '重跑中...' : '重新生成下游内容：场景安排'}
+          {isRecomputingDependency ? '执行中...' : '重新生成场景安排'}
         </button>
         <button onClick={() => void recomputeDependency('recompute_draft')} disabled={isRecomputingDependency || dependencyItems.length === 0}>
-          {isRecomputingDependency ? '重跑中...' : '重新生成下游内容：章节草稿'}
+          {isRecomputingDependency ? '执行中...' : '重新生成草稿'}
         </button>
         <div>重新生成不会自动发布章节，也不会绕过变更提案。</div>
       </div>
-      <div className="panel">
-        当前章摘要：chapter_no={chapterNo}，goal={goalId || '-'}，blueprint={blueprintId || '-'}，draft={draftId || '-'}
-        ，scene_ids={sceneIds.length}，最近动作={lastAction || '-'}，最近结果={lastActionResultSummary || '-'}，最近错误=
-        {lastActionError || '-'}
-      </div>
+      <div className="panel">当前章节：第 {chapterNo} 章；已选蓝图：{blueprintId ? '已完成' : '未完成'}；已生成场景：{sceneIds.length}；草稿：{draftId ? '已生成' : '未生成'}。</div>
       <div className="panel">
         <label>
           章节号
           <input type="number" value={chapterNo} onChange={(e) => setChapterNo(Number(e.target.value))} />
         </label>
         <button onClick={() => void createGoal()} disabled={isCreatingGoal}>
-          {isCreatingGoal ? '1) 创建目标中…' : '1) 创建目标'}
+          {isCreatingGoal ? '创建本章目标中…' : '创建本章目标'}
         </button>
         <button onClick={() => void restoreCurrentChapter('manual')} disabled={isRehydratingChapter}>
           {isRehydratingChapter ? '读取当前章已有内容中…' : '读取当前章已有内容'}
         </button>
         <button onClick={genBlueprint} disabled={!goalId || isGeneratingBlueprint}>
-          {isGeneratingBlueprint ? '2) 生成蓝图候选中…' : '2) 生成蓝图候选'}
+          {isGeneratingBlueprint ? '生成蓝图候选中…' : '生成蓝图候选'}
         </button>
         <form onSubmit={chooseBlueprint}>
-          <input placeholder="blueprint_id" value={blueprintId} onChange={(e) => setBlueprintId(e.target.value)} required />
-          <button disabled={isSelectingBlueprint}>{isSelectingBlueprint ? '3) 选择蓝图中…' : '3) 选择蓝图'}</button>
+          <input placeholder="请输入蓝图编号" value={blueprintId} onChange={(e) => setBlueprintId(e.target.value)} required />
+          <button disabled={isSelectingBlueprint}>{isSelectingBlueprint ? '选用蓝图中…' : '选用蓝图'}</button>
         </form>
         <button onClick={decompose} disabled={!blueprintId || isDecomposing}>
-          {isDecomposing ? '4) 场景拆解执行中…' : '4) 场景拆解'}
+          {isDecomposing ? '生成中…' : '生成场景安排'}
         </button>
         <button onClick={genDraft} disabled={!blueprintId || isGeneratingDraft}>
-          {isGeneratingDraft ? '5) 草稿生成执行中…' : '5) 草稿生成'}
+          {isGeneratingDraft ? '生成中…' : '生成章节草稿'}
         </button>
         <button onClick={reviseDraft} disabled={!draftId || isRevisingDraft}>
-          {isRevisingDraft ? '6) 草稿修订执行中…' : '6) 草稿修订'}
+          {isRevisingDraft ? '修订中…' : '根据建议修订草稿'}
         </button>
       </div>
 
@@ -552,7 +548,7 @@ export function WorkbenchPage() {
             <div>这不是系统故障，可直接读取并继续当前章流程。</div>
           </div>
         ) : (
-          <EmptyState text="当前章暂无“已存在目标”冲突提示" />
+          <EmptyState text="当前章节可直接创建新目标。" />
         )}
       </div>
 
@@ -601,9 +597,9 @@ export function WorkbenchPage() {
                 const isExpanded = expandedBlueprintId === summary.id;
                 return (
                   <li key={summary.id} className="panel">
-                    <div>候选ID：{summary.id}</div>
+                    <div>候选蓝图：{summary.id}</div>
                     <div>标题：{summary.title_hint}</div>
-                    <div>后端 selected：{String(summary.selected)}</div>
+                    <div>当前是否已选中：{summary.selected ? '是' : '否'}</div>
                     <button onClick={() => setExpandedBlueprintId(isExpanded ? '' : summary.id)}>{isExpanded ? '收起详情' : '展开详情'}</button>
                     <button onClick={() => selectCandidateInUi(summary.id)}>设为当前章节蓝图</button>
                     <Link to={`/projects/${projectId}/blueprints/${summary.id}/edit`}>人工修订蓝图</Link>
@@ -629,12 +625,12 @@ export function WorkbenchPage() {
         ) : (
           <div>
             <div>场景数量：{lastScenesPayload.scene_count}</div>
-            <div>scene_ids：{lastScenesPayload.scene_ids.join('，') || '-'}</div>
+            <div>场景编号：{lastScenesPayload.scene_ids.join('，') || '-'}</div>
             <div>场景标题样例：{lastScenesPayload.sample_titles.join('；') || '-'}</div>
             <div>
               {lastScenesPayload.scene_ids.map((sceneId) => (
                 <Link key={sceneId} to={`/projects/${projectId}/scenes/${sceneId}/edit`} style={{ marginRight: 8 }}>
-                  编辑场景 {sceneId}
+                  人工修订场景 {sceneId}
                 </Link>
               ))}
             </div>
@@ -650,15 +646,15 @@ export function WorkbenchPage() {
           <div>
             {lastDraftPayload && (
               <div className="panel">
-                <div>最近草稿生成：draft_id={lastDraftPayload.draft_id}</div>
-                <div>status：{lastDraftPayload.status}</div>
+                <div>最近草稿生成：{lastDraftPayload.draft_id}</div>
+                <div>状态：{lastDraftPayload.status}</div>
                 <div>摘要：{lastDraftPayload.summary}</div>
               </div>
             )}
             {lastRevisedDraftPayload && (
               <div className="panel">
-                <div>最近草稿修订：draft_id={lastRevisedDraftPayload.draft_id}</div>
-                <div>status：{lastRevisedDraftPayload.status}</div>
+                <div>最近草稿修订：{lastRevisedDraftPayload.draft_id}</div>
+                <div>状态：{lastRevisedDraftPayload.status}</div>
                 <div>摘要：{lastRevisedDraftPayload.summary}</div>
               </div>
             )}
@@ -691,8 +687,14 @@ export function WorkbenchPage() {
       </div>
 
       {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-      {draftId && <PendingApprovalState text="可进入质量检查 / 变更提案 / 发布章节页面继续流程" />}
-      <pre className="panel">{JSON.stringify(stateDump, null, 2)}</pre>
+      {draftId && <PendingApprovalState text="可进入质量检查、变更提案与发布章节继续流程。" />}
+      <details className="panel">
+        <summary>调试信息（默认折叠）</summary>
+        <div>最近动作：{lastAction || '-'}</div>
+        <div>最近结果：{lastActionResultSummary || '-'}</div>
+        <div>最近错误：{lastActionError || '-'}</div>
+        <pre>{JSON.stringify(stateDump, null, 2)}</pre>
+      </details>
     </div>
   );
 }

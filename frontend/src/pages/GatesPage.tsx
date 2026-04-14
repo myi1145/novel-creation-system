@@ -8,6 +8,19 @@ import { toActionErrorMessage } from '../utils/actionError';
 
 const DEFAULT_GATE_NAMES = ['schema_gate', 'canon_gate', 'narrative_gate', 'style_gate'] as const;
 
+function toGateSummary(result: Record<string, unknown>): string[] {
+  const checks = Array.isArray(result.checks) ? result.checks : [];
+  if (checks.length > 0) {
+    return checks.slice(0, 4).map((check) => {
+      const item = check as Record<string, unknown>;
+      return `${String(item.title || item.key || '检查项')}: ${String(item.message || item.status || '已完成')}`;
+    });
+  }
+  const summary = String(result.summary || '').trim();
+  if (summary) return [summary];
+  return ['质量检查已完成，请继续查看结果并决定是否需要人工修订。'];
+}
+
 export function GatesPage() {
   const { projectId = '' } = useParams();
   const [draftId, setDraftId] = useState('');
@@ -27,10 +40,11 @@ export function GatesPage() {
 
   const run = async () => {
     if (isRunningGate) return;
-    setFeedback(''); setError('');
+    setFeedback('');
+    setError('');
     const sanitizedDraftId = draftId.trim();
     if (!sanitizedDraftId) {
-      setError('请先输入有效的 draft_id');
+      setError('请先选择要检查的章节草稿。');
       return;
     }
     setIsRunningGate(true);
@@ -43,12 +57,12 @@ export function GatesPage() {
       window.localStorage.setItem(lastDraftStorageKey, sanitizedDraftId);
       setResult(data as Record<string, unknown>);
       mergeProjectChainState(projectId, { draftId: sanitizedDraftId });
-      setFeedback('质量检查完成。若需继续人工修订，可返回草稿编辑；通过后再进入变更提案。');
+      setFeedback('质量检查完成。若有问题请先人工修订草稿，通过后再生成变更提案。');
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
-        setError('执行质量检查失败，请检查草稿编号后重试（参数不符合后端要求）。');
+        setError('执行质量检查失败，请确认草稿可用后重试。');
       } else {
-        setError(toActionErrorMessage('执行质量检查', e, '请检查草稿状态或稍后重试。'));
+        setError(toActionErrorMessage('执行质量检查', e, '请稍后重试。'));
       }
     } finally {
       setIsRunningGate(false);
@@ -58,14 +72,23 @@ export function GatesPage() {
   if (!projectId) return <BlockedState text="缺少项目上下文" />;
 
   return <div><h2>质量检查</h2>
-    <div className="panel">用于检查章节草稿是否满足发布要求，通过后再进入变更提案。</div>
+    <div className="panel">用于检查章节草稿是否满足发布前要求。</div>
     <div className="panel">
-      <input placeholder="请输入草稿编号（draft_id）" value={draftId} onChange={(e)=>setDraftId(e.target.value)} />
+      <input placeholder="请输入草稿编号" value={draftId} onChange={(e)=>setDraftId(e.target.value)} />
       <button onClick={run} disabled={isRunningGate}>{isRunningGate ? '执行中...' : '执行质量检查'}</button>
     </div>
-    {isRunningGate && <ActionSuccess text="正在执行质量检查，请稍候..." />}
+    {isRunningGate && <ActionSuccess text="正在执行质量检查，请稍候（约 10-30 秒）..." />}
     {feedback && <ActionSuccess text={feedback} />} {error && <ActionFailure text={error} />}
-    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回工作台修订</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>去变更提案</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
-    {result ? <pre className="panel">{JSON.stringify(result, null, 2)}</pre> : <EmptyState text="还没有质量检查结果，请先执行质量检查。" />}
+    <div className="project-nav"><Link to={`/projects/${projectId}/workbench`}>返回创作工作台</Link>{draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}<Link to={`/projects/${projectId}/changesets`}>生成变更提案</Link><Link to={`/projects/${projectId}/overview`}>回项目概览</Link></div>
+    {result ? (
+      <div className="panel">
+        <h3>质量检查结果摘要</h3>
+        <ul>
+          {toGateSummary(result).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    ) : <EmptyState text="还没有质量检查结果，请先执行质量检查。" />}
   </div>;
 }
