@@ -18,7 +18,7 @@ README 负责项目入口与运行说明；`/md/status/current_stage_handoff.md`
 
 为避免口径漂移：README 不定义当前阶段结论，只提供执行入口与推荐顺序；阶段判断与任务边界一律以 `current_stage_handoff.md` 为准。
 
-当前仓库阶段口径以 handoff 为准：轻量版本差异对比与重发决策阶段已签收完成，当前进入“发布章节成品阅读与导出”的方向确认与边界立项阶段；相关决策链位于 `md/next_stage_decision_published_export/`（00~04），并由 handoff 统一收口。
+当前仓库阶段口径以 handoff 为准：作者端主路径体验收口已完成，当前进入“结构化设定卡槽体系”的方向确认与边界立项阶段；相关决策链位于 `md/next_stage_decision_structured_cards/`（00~04），并由 handoff 统一收口。
 
 ---
 
