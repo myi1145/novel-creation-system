@@ -61,6 +61,7 @@ export function PublishedPage() {
   const { projectId = '' } = useParams();
   const [draftId, setDraftId] = useState('');
   const [publishedId, setPublishedId] = useState('');
+  const [chapterNoForReadiness, setChapterNoForReadiness] = useState('1');
   const [publishResult, setPublishResult] = useState<unknown>(null);
   const [published, setPublished] = useState<unknown>(null);
   const [records, setRecords] = useState<unknown>(null);
@@ -158,6 +159,13 @@ export function PublishedPage() {
       </div>
     )}
     <div className="panel"><div className="project-nav"><Link to={`/projects/${projectId}/overview`}>回项目概览</Link><Link to={`/projects/${projectId}/workbench`}>回当前章工作台</Link><Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link></div></div>
+    <div className="panel">
+      <label>
+        chapter_no
+        <input value={chapterNoForReadiness} onChange={(e) => setChapterNoForReadiness(e.target.value)} />
+      </label>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>发布前一致性验收</Link>
+    </div>
     {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在执行请求，请稍候..." />}
     {feedback && <ActionSuccess text={feedback}/>} {error && <ActionFailure text={error}/>} 
     <pre className="panel">publishResult={JSON.stringify(publishResult,null,2)}</pre>

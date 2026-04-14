@@ -32,6 +32,7 @@ npm run build
 - `/projects/:projectId/gates`
 - `/projects/:projectId/changesets`
 - `/projects/:projectId/published`
+- `/projects/:projectId/chapters/:chapterNo/release-readiness`
 - `/projects/:projectId/workflows`
 
 ## 说明
@@ -79,3 +80,14 @@ npm run build
    - 重跑场景拆解：复用 `/chapters/scenes/decompose`
    - 重跑草稿生成：复用 `/chapters/drafts/generate`
 5. 重跑只会更新失效状态为 `recomputed`，不会自动发布，不会绕过 Gate / ChangeSet。
+
+## 发布前一致性验收与章节发布准入（本轮新增）
+
+1. `WorkbenchPage` 与 `PublishedPage` 已新增统一入口文案「发布前一致性验收」。
+2. 验收页路由为 `/projects/:projectId/chapters/:chapterNo/release-readiness`。
+3. 页面会聚合并展示四类检查项：`stale`、`gate`、`changeset`、`publish`。
+4. 页面总状态只输出两类结论：
+   - `ready_to_publish`
+   - `needs_attention`
+5. 每个检查项都提供说明与下一步 CTA，用于跳转到 Workbench / Gate / ChangeSet / Published 对应页面继续处理。
+6. 该页面定位为“提示与准入建议”，不是硬阻断发布：不会自动修复问题，不会自动重跑，不会自动 apply ChangeSet，也不会自动发布。

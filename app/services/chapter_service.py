@@ -10,6 +10,7 @@ from app.core.logging import get_logger
 from app.core.logging_context import set_log_context
 from app.db.models import (
     CanonSnapshotORM,
+    ChangeSetORM,
     ChapterBlueprintORM,
     ChapterDraftORM,
     ChapterGoalORM,
@@ -42,6 +43,8 @@ from app.schemas.chapter import (
     DependencyStaleItem,
     PublishedChapter,
     PublishRecord,
+    ReleaseReadinessCheck,
+    ReleaseReadinessResponse,
     ReviseDraftRequest,
     SceneStateTransition,
     SceneCard,
@@ -1462,6 +1465,151 @@ class ChapterService:
         source_id = scene_id or blueprint_id
         items = self._collect_open_stale_items(db=db, project_id=project_id, chapter_no=resolved_chapter_no, source_id=source_id)
         return ChapterDependencyStatusResponse(project_id=project_id, chapter_no=resolved_chapter_no, items=items)
+
+    def get_release_readiness(self, db: Session, *, project_id: str, chapter_no: int) -> ReleaseReadinessResponse:
+        goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+        if goal is None:
+            raise NotFoundError("章节目标不存在")
+
+        selected_blueprint = (
+            db.query(ChapterBlueprintORM)
+            .filter(
+                ChapterBlueprintORM.project_id == project_id,
+                ChapterBlueprintORM.chapter_goal_id == goal.id,
+                ChapterBlueprintORM.selected.is_(True),
+            )
+            .first()
+        )
+        blueprint_id = selected_blueprint.id if selected_blueprint else None
+
+        latest_draft = None
+        if blueprint_id:
+            latest_draft = (
+                db.query(ChapterDraftORM)
+                .filter(ChapterDraftORM.project_id == project_id, ChapterDraftORM.blueprint_id == blueprint_id)
+                .order_by(ChapterDraftORM.created_at.desc())
+                .first()
+            )
+
+        checks: list[ReleaseReadinessCheck] = []
+
+        stale_items = self._collect_open_stale_items(db=db, project_id=project_id, chapter_no=chapter_no)
+        has_open_stale = len(stale_items) > 0
+        checks.append(
+            ReleaseReadinessCheck(
+                key="stale",
+                status="warning" if has_open_stale else "ok",
+                title="下游可能过期（stale）",
+                message="检测到未处理的下游可能过期项，请先确认重跑后再发布。" if has_open_stale else "当前章节无未处理的下游可能过期项。",
+                next_action="前往 Workbench 处理 stale/recompute。" if has_open_stale else "保持当前状态，继续 Gate/ChangeSet 检查。",
+                target=f"/projects/{project_id}/workbench",
+            )
+        )
+
+        gate_status = "missing"
+        gate_message = "当前章节尚无 Gate 结果，请先执行 Gate。"
+        gate_action = "前往 Gate 页面执行质量闸门。"
+        if latest_draft is not None:
+            latest_gate_reviews = (
+                db.query(GateReviewORM)
+                .filter(GateReviewORM.project_id == project_id, GateReviewORM.draft_id == latest_draft.id)
+                .all()
+            )
+            if latest_gate_reviews:
+                if any(not item.passed for item in latest_gate_reviews):
+                    gate_status = "warning"
+                    gate_message = "最近一次 Gate 存在未通过项，请先处理 Gate 问题。"
+                    gate_action = "前往 Gate 页面查看失败项并修订草稿。"
+                else:
+                    gate_status = "ok"
+                    gate_message = "最近一次 Gate 已通过。"
+                    gate_action = "继续检查 ChangeSet 与 Publish 状态。"
+        checks.append(
+            ReleaseReadinessCheck(
+                key="gate",
+                status=gate_status,
+                title="质量闸门（Gate）",
+                message=gate_message,
+                next_action=gate_action,
+                target=f"/projects/{project_id}/gates",
+            )
+        )
+
+        changeset_status = "ok"
+        changeset_message = "当前章节未发现待处理 ChangeSet。"
+        changeset_action = "可继续发布前检查。"
+        if latest_draft is not None:
+            open_changesets = (
+                db.query(ChangeSetORM)
+                .filter(
+                    ChangeSetORM.project_id == project_id,
+                    ChangeSetORM.source_type == "chapter_draft",
+                    ChangeSetORM.source_ref == latest_draft.id,
+                    ChangeSetORM.status.in_(["proposed", "approved", "applying"]),
+                )
+                .all()
+            )
+            if open_changesets:
+                changeset_status = "warning"
+                changeset_message = "检测到未处理或未应用的 ChangeSet，请先处理。"
+                changeset_action = "前往 ChangeSet 页面审批并应用变更集。"
+        checks.append(
+            ReleaseReadinessCheck(
+                key="changeset",
+                status=changeset_status,
+                title="变更集（ChangeSet）",
+                message=changeset_message,
+                next_action=changeset_action,
+                target=f"/projects/{project_id}/changesets",
+            )
+        )
+
+        latest_published = (
+            db.query(PublishedChapterORM)
+            .filter(PublishedChapterORM.project_id == project_id, PublishedChapterORM.chapter_no == chapter_no)
+            .order_by(PublishedChapterORM.published_at.desc())
+            .first()
+        )
+        publish_status = "missing"
+        publish_message = "当前章节尚未发布，可在其他检查通过后发布。"
+        publish_action = "前往发布页面执行发布。"
+        if latest_published is not None:
+            publish_status = "ok"
+            publish_message = "当前章节已有发布记录。"
+            if latest_draft is not None and latest_draft.updated_at and latest_published.published_at and latest_draft.updated_at > latest_published.published_at:
+                publish_message = "当前章节已有发布记录，但工作态晚于发布态，建议评估是否重新发布。"
+            publish_action = "前往发布页面查看发布记录与摘要。"
+        checks.append(
+            ReleaseReadinessCheck(
+                key="publish",
+                status=publish_status,
+                title="发布状态（Publish）",
+                message=publish_message,
+                next_action=publish_action,
+                target=f"/projects/{project_id}/published",
+            )
+        )
+
+        overall_status = "ready_to_publish"
+        blocking_keys = {"stale", "gate", "changeset"}
+        if any(check.key in blocking_keys and check.status in {"warning", "missing"} for check in checks):
+            overall_status = "needs_attention"
+        summary = (
+            "存在待处理问题，建议先按检查项处理后再发布。"
+            if overall_status == "needs_attention"
+            else "当前章节已满足最小发布前一致性建议，可继续发布。"
+        )
+        return ReleaseReadinessResponse(
+            project_id=project_id,
+            chapter_no=chapter_no,
+            overall_status=overall_status,
+            summary=summary,
+            checks=checks,
+        )
 
     def recompute_dependencies(self, db: Session, request: RecomputeDependenciesRequest) -> RecomputeDependenciesResponse:
         resolved_chapter_no, selected_blueprint = self._resolve_chapter_context(
