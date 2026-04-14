@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, TerminologyCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryPlanning, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 
@@ -115,6 +115,9 @@ export const api = {
   updateFactionCard: (projectId: string, cardId: number, payload: Dict) => http.patch<FactionCard>(`/projects/${projectId}/faction-cards/${cardId}`, payload),
 
   listLocationCards: (projectId: string) => http.get<LocationCard[]>(`/projects/${projectId}/location-cards`),
+  getStoryPlanning: (projectId: string) => http.get<StoryPlanning | null>(`/projects/${projectId}/story-planning`),
+  saveStoryPlanning: (projectId: string, payload: StoryPlanningUpsertPayload) => http.put<StoryPlanning>(`/projects/${projectId}/story-planning`, payload),
+
   getLocationCard: (projectId: string, cardId: number) => http.get<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`),
   createLocationCard: (projectId: string, payload: Dict) => http.post<LocationCard>(`/projects/${projectId}/location-cards`, payload),
   updateLocationCard: (projectId: string, cardId: number, payload: Dict) => http.patch<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`, payload),

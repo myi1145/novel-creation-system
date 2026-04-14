@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ValidationError
 from app.db.session import get_db
 from app.schemas.project import CreateProjectRequest
+from app.schemas.story_planning import StoryPlanningUpsert
 from app.schemas.structured_cards import (
     CharacterCardCreate,
     CharacterCardUpdate,
@@ -19,6 +20,7 @@ from app.schemas.structured_cards import (
     TerminologyCardUpdate,
 )
 from app.services.project_service import project_service
+from app.services.story_planning_service import story_planning_service
 from app.services.structured_card_service import structured_card_service
 from app.utils.response import success_response
 
@@ -36,6 +38,21 @@ def list_projects(db: Session = Depends(get_db)) -> dict:
     projects = [item.model_dump(mode="json") for item in project_service.list_projects(db=db)]
     return success_response(data=projects)
 
+
+
+
+@router.get("/{project_id}/story-planning")
+def get_story_planning(project_id: str, db: Session = Depends(get_db)) -> dict:
+    item = story_planning_service.get_story_planning(db=db, project_id=project_id)
+    if item is None:
+        return success_response(data=None, message="尚未创建全书规划")
+    return success_response(data=item.model_dump(mode="json"))
+
+
+@router.put("/{project_id}/story-planning")
+def upsert_story_planning(project_id: str, request: StoryPlanningUpsert, db: Session = Depends(get_db)) -> dict:
+    item = story_planning_service.upsert_story_planning(db=db, project_id=project_id, request=request)
+    return success_response(data=item.model_dump(mode="json"), message="全书规划已保存")
 
 @router.get("/{project_id}/structured-cards/export.json")
 def export_structured_cards_json(project_id: str, db: Session = Depends(get_db)) -> Response:

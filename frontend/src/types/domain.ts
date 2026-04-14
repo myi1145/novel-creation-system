@@ -22,6 +22,28 @@ export interface ChapterWorkbenchState extends Dict {
 }
 
 
+
+
+export interface StoryPlanning {
+  id: string;
+  project_id: string;
+  worldview: string;
+  main_outline: string;
+  volume_plan: string;
+  core_seed_summary: string;
+  planning_status: 'draft' | 'confirmed';
+  last_update_source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryPlanningUpsertPayload {
+  worldview: string;
+  main_outline: string;
+  volume_plan: string;
+  core_seed_summary: string;
+  planning_status: 'draft' | 'confirmed';
+}
 export interface CharacterCard {
   id: number;
   project_id: string;
