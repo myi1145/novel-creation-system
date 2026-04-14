@@ -8,6 +8,8 @@ const tabs = [
   ['objects', '对象库'],
   ['character-cards', '角色卡'],
   ['terminology-cards', '术语卡'],
+  ['faction-cards', '势力卡'],
+  ['location-cards', '地点卡'],
   ['workbench', '创作工作台'],
   ['gates', '质量检查'],
   ['changesets', '变更提案'],

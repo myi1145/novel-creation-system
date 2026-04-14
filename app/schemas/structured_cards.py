@@ -72,3 +72,89 @@ class TerminologyCardResponse(TerminologyCardBase):
     is_canon: bool
     created_at: datetime
     updated_at: datetime
+
+
+class FactionCardBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    aliases: list[str] = Field(default_factory=list)
+    faction_type: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., min_length=1)
+    core_members: list[str] = Field(default_factory=list)
+    territory: str = ""
+    stance: str = ""
+    goals: str = ""
+    relationship_notes: str = ""
+    current_status: str = ""
+    first_appearance_chapter: int | None = Field(default=None, ge=1)
+
+
+class FactionCardCreate(FactionCardBase):
+    pass
+
+
+class FactionCardUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    aliases: list[str] | None = None
+    faction_type: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, min_length=1)
+    core_members: list[str] | None = None
+    territory: str | None = None
+    stance: str | None = None
+    goals: str | None = None
+    relationship_notes: str | None = None
+    current_status: str | None = None
+    first_appearance_chapter: int | None = Field(default=None, ge=1)
+    is_canon: bool | None = None
+
+
+class FactionCardResponse(FactionCardBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: str
+    last_update_source: str
+    is_canon: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class LocationCardBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    aliases: list[str] = Field(default_factory=list)
+    location_type: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., min_length=1)
+    region: str = ""
+    key_features: list[str] = Field(default_factory=list)
+    related_factions: list[str] = Field(default_factory=list)
+    narrative_role: str = ""
+    current_status: str = ""
+    first_appearance_chapter: int | None = Field(default=None, ge=1)
+
+
+class LocationCardCreate(LocationCardBase):
+    pass
+
+
+class LocationCardUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    aliases: list[str] | None = None
+    location_type: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, min_length=1)
+    region: str | None = None
+    key_features: list[str] | None = None
+    related_factions: list[str] | None = None
+    narrative_role: str | None = None
+    current_status: str | None = None
+    first_appearance_chapter: int | None = Field(default=None, ge=1)
+    is_canon: bool | None = None
+
+
+class LocationCardResponse(LocationCardBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: str
+    last_update_source: str
+    is_canon: bool
+    created_at: datetime
+    updated_at: datetime

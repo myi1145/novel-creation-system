@@ -27,6 +27,8 @@ npm run build
 - `/projects/:projectId/objects`
 - `/projects/:projectId/character-cards`
 - `/projects/:projectId/terminology-cards`
+- `/projects/:projectId/faction-cards`
+- `/projects/:projectId/location-cards`
 - `/projects/:projectId/workbench`
 - `/projects/:projectId/blueprints/:blueprintId/edit`
 - `/projects/:projectId/scenes/:sceneId/edit`
@@ -182,7 +184,11 @@ npm run build
 
 - 角色卡入口：`/projects/:projectId/character-cards`
 - 术语卡入口：`/projects/:projectId/terminology-cards`
+- 势力卡入口：`/projects/:projectId/faction-cards`
+- 地点卡入口：`/projects/:projectId/location-cards`
 - 角色卡用途：集中维护人物身份、性格关键词、关系备注与当前状态，减少跨章漂移。
 - 术语卡用途：维护修炼体系、阵法术语、世界观概念等固定说法，保证用词一致。
-- 本阶段仅支持人工创建/编辑，不做自动抽取、不做自动生成、不直接写 Canon。
+- 势力卡用途：集中维护宗门、王朝、家族、商会等组织信息，稳定势力立场与目标描述。
+- 地点卡用途：集中维护城镇、宗门、秘境等地点信息，稳定区域、特征与叙事作用。
+- 本轮只支持人工创建/编辑，不做自动抽取、不做自动生成、不写 Canon、不生成 ChangeSet。
 
