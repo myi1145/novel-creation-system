@@ -46,6 +46,10 @@ from app.schemas.chapter import (
     PublishHistoryItem,
     PublishHistoryRelation,
     PublishHistoryResponse,
+    VersionDiffCheck,
+    VersionDiffMetrics,
+    VersionDiffRef,
+    VersionDiffResponse,
     ReleaseReadinessCheck,
     ReleaseReadinessResponse,
     ReviseDraftRequest,
@@ -167,6 +171,12 @@ def _to_publish_history_item(record: PublishRecordORM, published_chapter: Publis
     )
 
 
+def _paragraph_count(content: str | None) -> int:
+    if not content:
+        return 0
+    return len([line for line in content.splitlines() if line.strip()])
+
+
 def _build_stale_key(payload: dict) -> str:
     return "|".join(
         [
@@ -182,6 +192,26 @@ def _build_stale_key(payload: dict) -> str:
 
 
 class ChapterService:
+    def _get_current_working_draft(
+        self,
+        db: Session,
+        *,
+        project_id: str,
+        selected_blueprint_id: str | None,
+    ) -> ChapterDraftORM | None:
+        if not selected_blueprint_id:
+            return None
+        return (
+            db.query(ChapterDraftORM)
+            .filter(
+                ChapterDraftORM.project_id == project_id,
+                ChapterDraftORM.blueprint_id == selected_blueprint_id,
+                ChapterDraftORM.status != "published",
+            )
+            .order_by(ChapterDraftORM.updated_at.desc(), ChapterDraftORM.created_at.desc())
+            .first()
+        )
+
     def _resolve_chapter_context(
         self,
         db: Session,
@@ -1451,6 +1481,203 @@ class ChapterService:
             latest_published=latest_published,
             working_state_relation=relation,
             history=history,
+        )
+
+    def get_version_diff(self, db: Session, *, project_id: str, chapter_no: int) -> VersionDiffResponse:
+        goal = (
+            db.query(ChapterGoalORM)
+            .filter(ChapterGoalORM.project_id == project_id, ChapterGoalORM.chapter_no == chapter_no)
+            .first()
+        )
+        if goal is None:
+            raise NotFoundError("章节目标不存在")
+
+        selected_blueprint = (
+            db.query(ChapterBlueprintORM)
+            .filter(
+                ChapterBlueprintORM.project_id == project_id,
+                ChapterBlueprintORM.chapter_goal_id == goal.id,
+                ChapterBlueprintORM.selected.is_(True),
+            )
+            .first()
+        )
+        latest_publish_row = (
+            db.query(PublishRecordORM, PublishedChapterORM)
+            .join(PublishedChapterORM, PublishRecordORM.published_chapter_id == PublishedChapterORM.id)
+            .filter(
+                PublishRecordORM.project_id == project_id,
+                PublishedChapterORM.chapter_no == chapter_no,
+            )
+            .order_by(PublishedChapterORM.published_at.desc(), PublishRecordORM.created_at.desc())
+            .first()
+        )
+        latest_record = latest_publish_row[0] if latest_publish_row else None
+        latest_published = latest_publish_row[1] if latest_publish_row else None
+        current_working_draft = self._get_current_working_draft(
+            db=db,
+            project_id=project_id,
+            selected_blueprint_id=selected_blueprint.id if selected_blueprint else None,
+        )
+
+        published_ref = VersionDiffRef(
+            publish_record_id=getattr(latest_record, "id", None),
+            published_at=getattr(latest_published, "published_at", None),
+            draft_ref_id=getattr(latest_record, "draft_id", None),
+            changeset_ref_id=getattr(latest_record, "changeset_id", None),
+        )
+        current_ref = VersionDiffRef(
+            draft_id=getattr(current_working_draft, "id", None),
+            updated_at=getattr(current_working_draft, "updated_at", None),
+            source_type="current_working_draft" if current_working_draft else None,
+        )
+
+        checks: list[VersionDiffCheck] = []
+        if latest_record is None:
+            checks.append(
+                VersionDiffCheck(
+                    key="publish_time",
+                    status="missing",
+                    title="最近发布版本",
+                    message="当前章节尚未发布，无法进行版本差异对比。",
+                )
+            )
+            return VersionDiffResponse(
+                project_id=project_id,
+                chapter_no=chapter_no,
+                comparison_status="never_published",
+                recommendation="cannot_compare",
+                summary="尚未发布，无法对比当前工作态与发布态。",
+                published_ref=published_ref,
+                current_ref=current_ref,
+                diff=VersionDiffMetrics(length_delta=0, paragraph_delta=0, changed_summary="暂无可比较数据。", change_level="none"),
+                checks=checks,
+            )
+
+        if current_working_draft is None:
+            checks.append(
+                VersionDiffCheck(
+                    key="source",
+                    status="missing",
+                    title="当前工作态草稿",
+                    message="当前章节没有可对比的工作态草稿。",
+                )
+            )
+            return VersionDiffResponse(
+                project_id=project_id,
+                chapter_no=chapter_no,
+                comparison_status="no_current_work",
+                recommendation="cannot_compare",
+                summary="缺少当前工作态草稿，无法与最近发布版进行对比。",
+                published_ref=published_ref,
+                current_ref=current_ref,
+                diff=VersionDiffMetrics(length_delta=0, paragraph_delta=0, changed_summary="暂无可比较数据。", change_level="none"),
+                checks=checks,
+            )
+
+        published_content = getattr(latest_published, "content", "") or ""
+        current_content = getattr(current_working_draft, "content", "") or ""
+        length_delta = len(current_content) - len(published_content)
+        paragraph_delta = _paragraph_count(current_content) - _paragraph_count(published_content)
+        abs_length_delta = abs(length_delta)
+        abs_paragraph_delta = abs(paragraph_delta)
+        has_newer_working_update = bool(
+            current_working_draft.updated_at
+            and latest_published.published_at
+            and current_working_draft.updated_at > latest_published.published_at
+        )
+        is_draft_changed = bool(latest_record.draft_id and latest_record.draft_id != current_working_draft.id)
+
+        post_publish_log_exists = (
+            db.query(ImmutableLogORM)
+            .filter(
+                ImmutableLogORM.project_id == project_id,
+                ImmutableLogORM.created_at > latest_published.published_at,
+                ImmutableLogORM.event_type.in_(
+                    [
+                        "chapter_blueprint_human_edited",
+                        "chapter_scene_human_edited",
+                        "chapter_draft_human_edited",
+                        "chapter_dependency_stale_marked",
+                        "chapter_dependency_recomputed",
+                    ]
+                ),
+            )
+            .first()
+            is not None
+        )
+
+        if abs_length_delta == 0 and abs_paragraph_delta == 0 and not is_draft_changed:
+            change_level = "none"
+        elif abs_length_delta <= 80 and abs_paragraph_delta <= 1 and not post_publish_log_exists:
+            change_level = "minor"
+        elif abs_length_delta <= 300 and abs_paragraph_delta <= 3:
+            change_level = "moderate"
+        else:
+            change_level = "major"
+
+        recommendation = "republish_recommended" if change_level in {"moderate", "major"} else "republish_not_needed"
+
+        changed_summary = (
+            f"正文长度变化 {length_delta:+d} 字，段落变化 {paragraph_delta:+d}。"
+            f"{' 当前工作态晚于发布时间。' if has_newer_working_update else ''}"
+            f"{' 当前草稿与发布来源草稿不同。' if is_draft_changed else ''}"
+            f"{' 检测到发布后人工修订或重跑痕迹。' if post_publish_log_exists else ''}"
+        ).strip()
+
+        checks.extend(
+            [
+                VersionDiffCheck(
+                    key="length",
+                    status="warning" if abs_length_delta >= 120 else "ok",
+                    title="正文长度差异",
+                    message=f"当前工作态与最近发布版正文长度差值为 {length_delta:+d} 字。",
+                ),
+                VersionDiffCheck(
+                    key="paragraphs",
+                    status="warning" if abs_paragraph_delta >= 2 else "ok",
+                    title="段落数量差异",
+                    message=f"当前工作态与最近发布版段落差值为 {paragraph_delta:+d}。",
+                ),
+                VersionDiffCheck(
+                    key="source",
+                    status="warning" if is_draft_changed else "ok",
+                    title="草稿来源一致性",
+                    message="当前草稿与发布来源草稿不同，可能存在发布后新增修订。" if is_draft_changed else "当前草稿与发布来源草稿一致。",
+                ),
+                VersionDiffCheck(
+                    key="publish_time",
+                    status="warning" if has_newer_working_update else "ok",
+                    title="发布时间对比",
+                    message="当前工作态更新时间晚于最近发布时间，建议评估是否重新发布。" if has_newer_working_update else "当前工作态未晚于最近发布时间。",
+                ),
+            ]
+        )
+        if post_publish_log_exists:
+            checks.append(
+                VersionDiffCheck(
+                    key="post_publish_trace",
+                    status="warning",
+                    title="发布后编辑/重跑痕迹",
+                    message="检测到发布后人工修订或 stale 重跑痕迹。",
+                )
+            )
+
+        summary = "当前工作态与最近发布版存在明显变化，建议重新发布。" if recommendation == "republish_recommended" else "当前工作态与最近发布版差异较小，暂不需要重新发布。"
+        return VersionDiffResponse(
+            project_id=project_id,
+            chapter_no=chapter_no,
+            comparison_status="comparable",
+            recommendation=recommendation,
+            summary=summary,
+            published_ref=published_ref,
+            current_ref=current_ref,
+            diff=VersionDiffMetrics(
+                length_delta=length_delta,
+                paragraph_delta=paragraph_delta,
+                changed_summary=changed_summary,
+                change_level=change_level,
+            ),
+            checks=checks,
         )
 
     def generate_published_chapter_summary(self, db: Session, request: GenerateChapterSummaryRequest):

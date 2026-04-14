@@ -377,6 +377,42 @@ class PublishHistoryResponse(BaseModel):
     history: list[PublishHistoryItem] = Field(default_factory=list)
 
 
+class VersionDiffRef(BaseModel):
+    publish_record_id: str | None = None
+    published_at: datetime | None = None
+    draft_ref_id: str | None = None
+    changeset_ref_id: str | None = None
+    draft_id: str | None = None
+    updated_at: datetime | None = None
+    source_type: str | None = None
+
+
+class VersionDiffMetrics(BaseModel):
+    length_delta: int = 0
+    paragraph_delta: int = 0
+    changed_summary: str
+    change_level: str
+
+
+class VersionDiffCheck(BaseModel):
+    key: str
+    status: str
+    title: str
+    message: str
+
+
+class VersionDiffResponse(BaseModel):
+    project_id: str
+    chapter_no: int
+    comparison_status: str
+    recommendation: str
+    summary: str
+    published_ref: VersionDiffRef
+    current_ref: VersionDiffRef
+    diff: VersionDiffMetrics
+    checks: list[VersionDiffCheck] = Field(default_factory=list)
+
+
 class RecomputeDependenciesRequest(BaseModel):
     project_id: str
     chapter_no: int | None = None
