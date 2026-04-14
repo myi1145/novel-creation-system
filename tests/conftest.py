@@ -57,11 +57,12 @@ def _validate_pytest_migration_target(project_root: Path) -> None:
     database_url = os.getenv("DATABASE_URL") or env_file_values.get("DATABASE_URL") or "sqlite:///./data/app.db"
     app_env = os.getenv("APP_ENV") or env_file_values.get("APP_ENV") or "dev"
 
-    allowed, _reason = _is_allowed_test_database(database_url, app_env)
+    allowed, reason = _is_allowed_test_database(database_url, app_env)
     if not allowed:
         raise RuntimeError(
             "Refusing to run pytest auto-migration on non-test database. "
             f"Detected APP_ENV={app_env!r}, DATABASE_URL={database_url!r}. "
+            f"Validation reason: {reason}. "
             "Only test databases are allowed (SQLite temp DB, URL/path containing 'test', "
             "or APP_ENV in {'ci', 'test'})."
         )
