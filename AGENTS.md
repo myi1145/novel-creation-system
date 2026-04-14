@@ -31,10 +31,10 @@
 ## Current stage docs（任务前优先阅读）
 在遵循上述 V1 文档顺序的基础上，进行当前阶段任务前请优先补充阅读：
 1. md/status/current_stage_handoff.md
-2. md/next_stage_decision_publish_history/00_章节发布历史与版本追踪候选方向与问题定义.md
-3. md/next_stage_decision_publish_history/01_章节发布历史与版本追踪方向确认.md
-4. md/next_stage_decision_publish_history/02_章节发布历史与版本追踪阶段目标与边界.md
-5. md/next_stage_decision_publish_history/03_章节发布历史与版本追踪MVP范围.md
-6. md/next_stage_decision_publish_history/04_章节发布历史与版本追踪任务拆解与轮次规划.md
+2. md/next_stage_decision_version_diff/00_轻量版本差异对比与重发决策候选方向与问题定义.md
+3. md/next_stage_decision_version_diff/01_轻量版本差异对比与重发决策方向确认.md
+4. md/next_stage_decision_version_diff/02_轻量版本差异对比与重发决策阶段目标与边界.md
+5. md/next_stage_decision_version_diff/03_轻量版本差异对比与重发决策MVP范围.md
+6. md/next_stage_decision_version_diff/04_轻量版本差异对比与重发决策任务拆解与轮次规划.md
 
 > 历史参考：文本级人工修订闭环阶段决策链保留在 `md/next_stage_decision/`，蓝图级人工修订阶段决策链保留在 `md/next_stage_decision_blueprint_revision/`，场景级人工修订阶段决策链保留在 `md/next_stage_decision_scene_revision/`，下游依赖失效与重跑治理阶段决策链保留在 `md/next_stage_decision_dependency_recompute/`，发布前一致性验收与章节发布准入阶段决策链保留在 `md/next_stage_decision_release_readiness/`，均用于追溯，不作为当前阶段主入口。
