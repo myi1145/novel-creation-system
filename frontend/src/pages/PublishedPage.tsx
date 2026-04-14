@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
-import { ActionFailure, ActionSuccess } from '../components/Status';
+import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
 import { toActionErrorMessage } from '../utils/actionError';
 import { mergeProjectChainState } from '../features/projectState';
 
@@ -106,7 +106,7 @@ export function PublishedPage() {
     const finalPublishedId = (idOverride || publishedId).trim();
     if (!finalPublishedId) {
       setFeedback('');
-      setError('查看单章摘要失败。未选择已发布章节，请先从下方列表选择章节或填写已发布章节编号。');
+      setError('请先在下方选择已发布章节，再查看摘要。');
       return;
     }
 
@@ -120,14 +120,14 @@ export function PublishedPage() {
       window.localStorage.setItem(lastPublishedStorageKey, finalPublishedId);
       const result = await api.getSummary(projectId, finalPublishedId);
       setSummary(result);
-      setFeedback('已加载单章摘要');
+      setFeedback('已加载单章摘要。');
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        setError('查看单章摘要失败。未找到该章节摘要，请确认已发布章节编号来自当前项目且章节已成功发布。');
+        setError('没有找到对应内容，请确认章节是否已生成或发布。');
       } else if (e instanceof ApiError && e.status === 400) {
-        setError('查看单章摘要失败。当前已发布章节编号无效，请检查是否选择了正确的已发布章节。');
+        setError('章节编号无效，请重新选择已发布章节。');
       } else {
-        setError(toActionErrorMessage('查看单章摘要', e, '请检查发布章节编号是否正确。'));
+        setError(toActionErrorMessage('查看单章摘要', e, '请稍后重试。'));
       }
     } finally {
       setIsSummarizing(false);
@@ -135,47 +135,50 @@ export function PublishedPage() {
   };
 
   return <div><h2>发布章节</h2>
-    <div className="panel">用于把当前章节发布为正式版本；发布前建议先完成质量检查、变更提案和发布前检查。</div>
-    <div className="panel"><input value={draftId} onChange={(e)=>setDraftId(e.target.value)} placeholder="请输入草稿编号（draft_id）"/><button disabled={isPublishing} onClick={()=>void (async()=>{ if (isPublishing) return; setIsPublishing(true); try { await run(async()=>{ const normalizedDraftId = draftId.trim(); const result = await api.publishDraft({project_id:projectId,draft_id:normalizedDraftId,published_by:'frontend_user'}); setPublishResult(result); if (normalizedDraftId) { window.localStorage.setItem(lastDraftStorageKey, normalizedDraftId); } const id = getPublishedChapterIdFromPublishResult(result); if (id) { setPublishedId(id); window.localStorage.setItem(lastPublishedStorageKey, id); mergeProjectChainState(projectId, { publishedChapterId: id }); setFeedback(`已发布，并自动带入已发布章节编号：${id}`); } },'已发布','发布章节','请检查草稿是否完成必要前置步骤。'); } finally { setIsPublishing(false); } })()}>{isPublishing ? '发布中...' : '发布章节'}</button></div>
-    <div className="panel"><button disabled={isRefreshingPublished} onClick={()=>void (async()=>{ if (isRefreshingPublished) return; setIsRefreshingPublished(true); try { await run(async()=>setPublished(await api.listPublished(projectId)),'已加载已发布章节','刷新已发布章节'); } finally { setIsRefreshingPublished(false); } })()}>{isRefreshingPublished ? '加载中...' : '刷新已发布章节'}</button><button disabled={isRefreshingRecords} onClick={()=>void (async()=>{ if (isRefreshingRecords) return; setIsRefreshingRecords(true); try { await run(async()=>setRecords(await api.listPublishRecords(projectId)),'已加载发布记录','刷新发布记录'); } finally { setIsRefreshingRecords(false); } })()}>{isRefreshingRecords ? '加载中...' : '刷新发布记录'}</button></div>
-    <div className="panel"><input value={publishedId} onChange={(e)=>setPublishedId(e.target.value)} placeholder="请输入已发布章节编号（published_chapter_id）"/><button disabled={isSummarizing} onClick={()=>void handleGetSummary()}>{isSummarizing ? '加载中...' : '查看单章摘要'}</button><button disabled={isLoadingLatestSummary} onClick={()=>void (async()=>{ if (isLoadingLatestSummary) return; setIsLoadingLatestSummary(true); try { await run(async()=>setLatestSummary(await api.getLatestSummary(projectId)),'已加载最新章节摘要','查看最新章节摘要'); } finally { setIsLoadingLatestSummary(false); } })()}>{isLoadingLatestSummary ? '加载中...' : '查看最新章节摘要'}</button></div>
-    <div className="panel"><small>提示：查看单章摘要需要已发布章节编号；查看最新章节摘要可直接按项目获取最新摘要，不依赖手填编号。</small></div>
-    {publishedList.length > 0 && (
+    <div className="panel">用于把当前章节发布为正式版本。发布前建议先完成质量检查、变更提案与发布前检查。</div>
+    <div className="panel"><input value={draftId} onChange={(e)=>setDraftId(e.target.value)} placeholder="请输入草稿编号"/><button disabled={isPublishing} onClick={()=>void (async()=>{ if (isPublishing) return; setIsPublishing(true); try { await run(async()=>{ const normalizedDraftId = draftId.trim(); const result = await api.publishDraft({project_id:projectId,draft_id:normalizedDraftId,published_by:'frontend_user'}); setPublishResult(result); if (normalizedDraftId) { window.localStorage.setItem(lastDraftStorageKey, normalizedDraftId); } const id = getPublishedChapterIdFromPublishResult(result); if (id) { setPublishedId(id); window.localStorage.setItem(lastPublishedStorageKey, id); mergeProjectChainState(projectId, { publishedChapterId: id }); setFeedback('发布成功，已自动带入本次章节。'); } },'已发布章节。','发布章节','请先确认前置流程已完成。'); } finally { setIsPublishing(false); } })()}>{isPublishing ? '发布中...' : '发布章节'}</button></div>
+    <div className="panel"><button disabled={isRefreshingPublished} onClick={()=>void (async()=>{ if (isRefreshingPublished) return; setIsRefreshingPublished(true); try { await run(async()=>setPublished(await api.listPublished(projectId)),'已更新章节列表。','更新章节列表'); } finally { setIsRefreshingPublished(false); } })()}>{isRefreshingPublished ? '加载中...' : '更新章节列表'}</button><button disabled={isRefreshingRecords} onClick={()=>void (async()=>{ if (isRefreshingRecords) return; setIsRefreshingRecords(true); try { await run(async()=>setRecords(await api.listPublishRecords(projectId)),'已更新发布记录。','更新发布记录'); } finally { setIsRefreshingRecords(false); } })()}>{isRefreshingRecords ? '加载中...' : '更新发布记录'}</button></div>
+    <div className="panel"><input value={publishedId} onChange={(e)=>setPublishedId(e.target.value)} placeholder="请输入已发布章节编号"/><button disabled={isSummarizing} onClick={()=>void handleGetSummary()}>{isSummarizing ? '加载中...' : '查看单章摘要'}</button><button disabled={isLoadingLatestSummary} onClick={()=>void (async()=>{ if (isLoadingLatestSummary) return; setIsLoadingLatestSummary(true); try { await run(async()=>setLatestSummary(await api.getLatestSummary(projectId)),'已加载最新章节摘要。','查看最新章节摘要'); } finally { setIsLoadingLatestSummary(false); } })()}>{isLoadingLatestSummary ? '加载中...' : '查看最新章节摘要'}</button></div>
+    <div className="panel"><small>提示：建议先从章节列表中选择章节，再查看摘要。</small></div>
+    {publishedList.length > 0 ? (
       <div className="panel">
-        <h3>已发布章节（可直接用于摘要）</h3>
+        <h3>已发布章节</h3>
         <ul>
           {publishedList.map((item) => (
             <li key={item.publishedChapterId}>
               <div>
-                <strong>{item.publishedChapterId}</strong>
-                {typeof item.chapterNo === 'number' ? ` | chapter_no: ${item.chapterNo}` : ''}
-                {item.title ? ` | title: ${item.title}` : ''}
-                {item.publishedAt ? ` | published_at: ${item.publishedAt}` : ''}
+                <strong>{typeof item.chapterNo === 'number' ? `第 ${item.chapterNo} 章` : '章节'}</strong>
+                {item.title ? `｜${item.title}` : ''}
+                {item.publishedAt ? `｜发布时间：${item.publishedAt}` : ''}
               </div>
-              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); window.localStorage.setItem(lastPublishedStorageKey, item.publishedChapterId); setFeedback(`已带入已发布章节编号：${item.publishedChapterId}`); setError(''); }}>使用此编号</button>
-              <button type="button" disabled={isSummarizing} onClick={()=>void handleGetSummary(item.publishedChapterId)}>查看摘要</button>
+              <button type="button" onClick={() => { setPublishedId(item.publishedChapterId); window.localStorage.setItem(lastPublishedStorageKey, item.publishedChapterId); setFeedback('已带入该章节，可继续查看摘要。'); setError(''); }}>带入该章节并查看摘要</button>
+              <button type="button" disabled={isSummarizing} onClick={()=>void handleGetSummary(item.publishedChapterId)}>查看单章摘要</button>
             </li>
           ))}
         </ul>
       </div>
+    ) : (
+      <EmptyState text="还没有已发布章节，请先完成发布章节。" />
     )}
-    <div className="panel"><div className="project-nav"><Link to={`/projects/${projectId}/overview`}>回项目概览</Link><Link to={`/projects/${projectId}/workbench`}>回当前章工作台</Link><Link to={`/projects/${projectId}/changesets`}>去变更提案</Link></div></div>
+    <div className="panel"><div className="project-nav"><Link to={`/projects/${projectId}/overview`}>回项目概览</Link><Link to={`/projects/${projectId}/workbench`}>回创作工作台</Link><Link to={`/projects/${projectId}/changesets`}>查看变更提案</Link></div></div>
     <div className="panel">
       <label>
-        chapter_no
+        章节号
         <input value={chapterNoForReadiness} onChange={(e) => setChapterNoForReadiness(e.target.value)} />
       </label>
-      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>进入发布前检查</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>发布前检查</Link>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/publish-history`}>章节发布历史</Link>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/version-diff`}>版本差异与重发建议</Link>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/published-reader`}>阅读已发布章节</Link>
     </div>
-    {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在执行请求，请稍候..." />}
+    {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在处理，请稍候..." />}
     {feedback && <ActionSuccess text={feedback}/>} {error && <ActionFailure text={error}/>} 
-    <pre className="panel">publishResult={JSON.stringify(publishResult,null,2)}</pre>
-    <pre className="panel">published={JSON.stringify(published,null,2)}</pre>
-    <pre className="panel">records={JSON.stringify(records,null,2)}</pre>
-    <pre className="panel">summary={JSON.stringify(summary,null,2)}</pre>
-    <pre className="panel">latestSummary={JSON.stringify(latestSummary,null,2)}</pre>
+    <details className="panel"><summary>调试信息（默认折叠）</summary>
+      <pre>publishResult={JSON.stringify(publishResult,null,2)}</pre>
+      <pre>published={JSON.stringify(published,null,2)}</pre>
+      <pre>records={JSON.stringify(records,null,2)}</pre>
+      <pre>summary={JSON.stringify(summary,null,2)}</pre>
+      <pre>latestSummary={JSON.stringify(latestSummary,null,2)}</pre>
+    </details>
   </div>;
 }

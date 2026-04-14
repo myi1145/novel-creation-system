@@ -38,16 +38,23 @@ type VersionDiffPayload = {
 };
 
 function toComparisonLabel(status: string): string {
-  if (status === 'never_published') return '尚未发布无法对比';
-  if (status === 'no_current_work') return '缺少当前工作态草稿';
-  if (status === 'comparable') return '可对比';
+  if (status === 'never_published') return '尚未发布';
+  if (status === 'no_current_work') return '缺少当前工作内容';
+  if (status === 'comparable') return '可正常对比';
   return status || '-';
 }
 
 function toRecommendationLabel(status: string): string {
-  if (status === 'cannot_compare') return '尚未发布或无工作态，无法对比';
+  if (status === 'cannot_compare') return '暂时无法对比';
   if (status === 'republish_not_needed') return '暂不需要重新发布';
   if (status === 'republish_recommended') return '建议重新发布';
+  return status || '-';
+}
+
+function toCheckStatus(status: string): string {
+  if (status === 'ok') return '正常';
+  if (status === 'warning') return '需关注';
+  if (status === 'missing') return '缺失';
   return status || '-';
 }
 
@@ -69,9 +76,9 @@ export function VersionDiffPage() {
         if (!mounted) return;
         setData(payload as VersionDiffPayload);
       })
-      .catch((e) => {
+      .catch(() => {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : '获取版本差异失败');
+        setError('加载失败，请稍后重试。');
       })
       .finally(() => {
         if (!mounted) return;
@@ -87,43 +94,27 @@ export function VersionDiffPage() {
   return (
     <div>
       <h2>版本差异与重发建议</h2>
-      <div className="panel">用于对比当前工作态与最近发布版的轻量差异，并给出是否建议重新发布。</div>
-      <div className="panel">project_id={projectId} | chapter_no={chapterNoNum}</div>
+      <div className="panel">用于查看当前工作内容相对最近发布版本的变化。</div>
 
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
 
-      {!isLoading && !error && !data && <EmptyState text="还没有可展示的版本差异数据。" />}
+      {!isLoading && !error && !data && <EmptyState text="需要“已发布版本 + 当前草稿”后才能对比。" />}
 
       {!isLoading && !error && data && (
         <>
           <div className="panel">
-            <div>对比状态：<strong>{toComparisonLabel(data.comparison_status)}</strong></div>
+            <div>对比结论：<strong>{toComparisonLabel(data.comparison_status)}</strong></div>
             <div>重发建议：<strong>{toRecommendationLabel(data.recommendation)}</strong></div>
             <div>摘要：{data.summary || '-'}</div>
           </div>
 
           <div className="panel">
-            <h3>最近发布版</h3>
-            <div>publish_record_id: {data.published_ref?.publish_record_id || '-'}</div>
-            <div>published_at: {data.published_ref?.published_at || '-'}</div>
-            <div>draft_ref_id: {data.published_ref?.draft_ref_id || '-'}</div>
-            <div>changeset_ref_id: {data.published_ref?.changeset_ref_id || '-'}</div>
-          </div>
-
-          <div className="panel">
-            <h3>当前工作态</h3>
-            <div>draft_id: {data.current_ref?.draft_id || '-'}</div>
-            <div>updated_at: {data.current_ref?.updated_at || '-'}</div>
-            <div>source_type: {data.current_ref?.source_type || '-'}</div>
-          </div>
-
-          <div className="panel">
-            <h3>轻量差异摘要</h3>
-            <div>length_delta: {typeof data.diff?.length_delta === 'number' ? data.diff.length_delta : '-'}</div>
-            <div>paragraph_delta: {typeof data.diff?.paragraph_delta === 'number' ? data.diff.paragraph_delta : '-'}</div>
-            <div>change_level: {data.diff?.change_level || '-'}</div>
-            <div>changed_summary: {data.diff?.changed_summary || '-'}</div>
+            <h3>变化摘要</h3>
+            <div>字数变化：{typeof data.diff?.length_delta === 'number' ? data.diff.length_delta : '-'}</div>
+            <div>段落变化：{typeof data.diff?.paragraph_delta === 'number' ? data.diff.paragraph_delta : '-'}</div>
+            <div>变化级别：{data.diff?.change_level || '-'}</div>
+            <div>变化说明：{data.diff?.changed_summary || '-'}</div>
           </div>
 
           <div className="panel">
@@ -135,14 +126,24 @@ export function VersionDiffPage() {
                 {checks.map((check) => (
                   <li key={`${check.key}-${check.title}`}>
                     <div><strong>{check.title}</strong></div>
-                    <div>key: {check.key}</div>
-                    <div>status: {check.status}</div>
-                    <div>message: {check.message}</div>
+                    <div>状态：{toCheckStatus(check.status)}</div>
+                    <div>说明：{check.message}</div>
                   </li>
                 ))}
               </ul>
             )}
           </div>
+
+          <details className="panel">
+            <summary>调试信息（默认折叠）</summary>
+            <div>发布记录编号：{data.published_ref?.publish_record_id || '-'}</div>
+            <div>发布于：{data.published_ref?.published_at || '-'}</div>
+            <div>来源草稿编号：{data.published_ref?.draft_ref_id || '-'}</div>
+            <div>来源变更提案编号：{data.published_ref?.changeset_ref_id || '-'}</div>
+            <div>当前草稿编号：{data.current_ref?.draft_id || '-'}</div>
+            <div>当前草稿更新时间：{data.current_ref?.updated_at || '-'}</div>
+            <div>当前草稿来源：{data.current_ref?.source_type || '-'}</div>
+          </details>
         </>
       )}
 

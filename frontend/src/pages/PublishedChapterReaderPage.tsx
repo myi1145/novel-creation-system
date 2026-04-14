@@ -36,10 +36,10 @@ export function PublishedChapterReaderPage() {
         if (!mounted) return;
         setData(payload as PublishedReaderPayload);
       })
-      .catch((e) => {
+      .catch(() => {
         if (!mounted) return;
         setData(null);
-        setError(e instanceof Error ? e.message : '获取已发布章节阅读内容失败');
+        setError('加载失败，请稍后重试。');
       })
       .finally(() => {
         if (!mounted) return;
@@ -69,14 +69,13 @@ export function PublishedChapterReaderPage() {
   return (
     <div>
       <h2>已发布章节阅读</h2>
-      <div className="panel">像阅读正式作品一样查看本章已发布成品，并支持复制与单章导出。</div>
-      <div className="panel">project_id={projectId} | chapter_no={chapterNoNum}</div>
+      <div className="panel">用于阅读、复制和导出已经发布的章节成品。</div>
 
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
       {copyFeedback && <ActionSuccess text={copyFeedback} />}
 
-      {!isLoading && !error && !data && <EmptyState text="本章还没有正式发布内容。" />}
+      {!isLoading && !error && !data && <EmptyState text="本章尚未发布。请先在“发布章节”页面完成发布。" />}
 
       {!isLoading && !error && data && (
         <>
@@ -89,10 +88,10 @@ export function PublishedChapterReaderPage() {
           <div className="panel">
             <button type="button" onClick={() => void handleCopyContent()}>复制正文</button>
             <a href={markdownUrl} download>
-              下载 Markdown
+              导出 Markdown
             </a>
             <a href={txtUrl} download>
-              下载 txt
+              导出 TXT
             </a>
           </div>
 
@@ -108,7 +107,7 @@ export function PublishedChapterReaderPage() {
           <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/publish-history`}>回章节发布历史</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNoNum}/version-diff`}>回版本差异与重发建议</Link>
-          <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
+          <Link to={`/projects/${projectId}/workbench`}>回创作工作台</Link>
         </div>
       </div>
     </div>

@@ -52,8 +52,8 @@ export function BlueprintEditorPage() {
       setHistory(stateHistory);
       const dependency = await api.getDependencyStatus({ project_id: projectId, blueprint_id: blueprintId });
       setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '读取蓝图失败');
+    } catch {
+      setError('加载失败，请稍后重试。');
     } finally {
       setIsLoading(false);
     }
@@ -75,9 +75,9 @@ export function BlueprintEditorPage() {
       });
       const dependency = await api.getDependencyStatus({ project_id: projectId, blueprint_id: blueprintId });
       setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
-      setFeedback(action === 'recompute_scenes' ? '已确认重跑场景拆解。' : '已确认重跑草稿生成。');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '重跑失败');
+      setFeedback(action === 'recompute_scenes' ? '已确认重新生成场景安排。' : '已确认重新生成草稿。');
+    } catch {
+      setError('重新生成失败，请稍后重试。');
     } finally {
       setIsRecomputing(false);
     }
@@ -90,7 +90,7 @@ export function BlueprintEditorPage() {
   const save = async () => {
     if (isSaving) return;
     if (!editReason.trim()) {
-      setError('请填写修订原因（edit_reason）');
+      setError('请填写修订原因（必填）。');
       return;
     }
     setIsSaving(true);
@@ -110,12 +110,12 @@ export function BlueprintEditorPage() {
       setSummary(String(updated.summary || summary));
       setAdvancesText(toMultiline(updated.advances));
       setRisksText(toMultiline(updated.risks));
-      setFeedback('蓝图人工修订已保存，可继续生成场景安排与草稿生成。');
+      setFeedback('蓝图人工修订已保存，可继续生成场景安排与章节草稿。');
       setEditReason('');
       const stateHistory = await api.getBlueprintStateHistory(projectId, blueprintId);
       setHistory(stateHistory);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败');
+    } catch {
+      setError('保存失败，请稍后重试。');
     } finally {
       setIsSaving(false);
     }
@@ -130,9 +130,9 @@ export function BlueprintEditorPage() {
       const scenes = await api.decomposeScenes({ project_id: projectId, blueprint_id: blueprintId });
       const ids = scenes.map((item) => String(item.id));
       setSceneIds(ids);
-      setFeedback(`场景拆解完成，scene 数量：${ids.length}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '场景拆解失败');
+      setFeedback(`场景安排生成完成，共 ${ids.length} 个场景。`);
+    } catch {
+      setError('场景安排生成失败，请稍后重试。');
     } finally {
       setIsDecomposing(false);
     }
@@ -154,9 +154,9 @@ export function BlueprintEditorPage() {
       if (nextDraftId) {
         window.localStorage.setItem(lastDraftStorageKey, nextDraftId);
       }
-      setFeedback(`草稿生成成功，draft_id=${nextDraftId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '草稿生成失败');
+      setFeedback('草稿生成成功。');
+    } catch {
+      setError('草稿生成失败，请稍后重试。');
     } finally {
       setIsGeneratingDraft(false);
     }
@@ -165,8 +165,7 @@ export function BlueprintEditorPage() {
   return (
     <div>
       <h2>章节蓝图人工修订</h2>
-      <div className="panel">用于确定本章的剧情方向和结构，可在此人工修订后继续生成场景安排与章节草稿。</div>
-      <div className="panel">project_id={projectId} / blueprint_id={blueprintId}</div>
+      <div className="panel">在这里调整本章剧情方向，再继续生成场景与草稿。</div>
 
       <div className="panel">
         <label>
@@ -186,56 +185,56 @@ export function BlueprintEditorPage() {
           <textarea value={risksText} onChange={(e) => setRisksText(e.target.value)} rows={5} disabled={isLoading} />
         </label>
         <label>
-          修订原因（edit_reason，必填）
+          修订原因（必填）
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明你为何编辑该蓝图" />
         </label>
-        <button onClick={() => void save()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存人工修订蓝图'}</button>
+        <button onClick={() => void save()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '人工修订蓝图并保存'}</button>
       </div>
 
       <div className="panel">
         <h3>下游内容可能已过期</h3>
-        {dependencyItems.length === 0 ? <div>当前蓝图没有检测到下游内容过期项。</div> : (
+        {dependencyItems.length === 0 ? <div>当前蓝图没有检测到下游内容可能已过期。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
-                影响={String(item.affected_type || '-')} / 原因={String(item.reason || '-')}
+                影响步骤：{String(item.affected_type || '-')}；原因：{String(item.reason || '-')}
               </li>
             ))}
           </ul>
         )}
         <button onClick={() => void recompute('recompute_scenes')} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '重新生成下游内容：场景安排'}
+          {isRecomputing ? '执行中...' : '重新生成场景安排'}
         </button>
         <button onClick={() => void recompute('recompute_draft')} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '重新生成下游内容：章节草稿'}
+          {isRecomputing ? '执行中...' : '重新生成草稿'}
         </button>
         <div>说明：仅重新生成下游内容，不会自动发布章节。</div>
       </div>
 
       <div className="panel">
         <h3>继续主链</h3>
-        <button onClick={() => void decompose()} disabled={isDecomposing}>{isDecomposing ? '场景拆解中...' : '继续生成场景安排'}</button>
-        <button onClick={() => void generateDraft()} disabled={isGeneratingDraft}>{isGeneratingDraft ? '草稿生成中...' : '继续生成章节草稿'}</button>
-        <div>scene_ids: {sceneIds.join('，') || '-'}</div>
+        <button onClick={() => void decompose()} disabled={isDecomposing}>{isDecomposing ? '场景生成中...' : '生成场景安排'}</button>
+        <button onClick={() => void generateDraft()} disabled={isGeneratingDraft}>{isGeneratingDraft ? '草稿生成中...' : '基于当前场景生成章节草稿'}</button>
+        <div>已生成场景数：{sceneIds.length}</div>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
-          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          <Link to={`/projects/${projectId}/gates`}>查看质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>查看变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>发布章节</Link>
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>
       </div>
 
       <div className="panel">
-        <h3>蓝图人工编辑历史（最小审计）</h3>
+        <h3>蓝图人工修订记录</h3>
         {history.length === 0 ? (
-          <EmptyState text="暂无人工编辑记录" />
+          <EmptyState text="暂无人工修订记录。" />
         ) : (
           <ul>
             {history.map((item) => (
               <li key={String(item.id || Math.random())}>
-                trigger_type={String(item.trigger_type || '-')} / reason={String(item.reason || '-')} / edited_at=
+                修订来源：{String(item.trigger_type || '-')} / 修订原因：{String(item.reason || '-')} / 修订时间：
                 {String((item.transition_metadata as Record<string, unknown> | undefined)?.edited_at || item.created_at || '-')}
               </li>
             ))}

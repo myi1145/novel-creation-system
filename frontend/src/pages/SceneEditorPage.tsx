@@ -50,8 +50,8 @@ export function SceneEditorPage() {
       setHistory(stateHistory);
       const dependency = await api.getDependencyStatus({ project_id: projectId, scene_id: sceneId });
       setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '读取场景失败');
+    } catch {
+      setError('加载失败，请稍后重试。');
     } finally {
       setIsLoading(false);
     }
@@ -73,9 +73,9 @@ export function SceneEditorPage() {
       });
       const dependency = await api.getDependencyStatus({ project_id: projectId, scene_id: sceneId });
       setDependencyItems(Array.isArray(dependency.items) ? (dependency.items as Record<string, unknown>[]) : []);
-      setFeedback('已确认重跑草稿生成。');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '重跑失败');
+      setFeedback('已确认重新生成草稿。');
+    } catch {
+      setError('重新生成失败，请稍后重试。');
     } finally {
       setIsRecomputing(false);
     }
@@ -88,7 +88,7 @@ export function SceneEditorPage() {
   const onSave = async () => {
     if (isSaving) return;
     if (!editReason.trim()) {
-      setError('请填写修订原因（edit_reason）');
+      setError('请填写修订原因（必填）。');
       return;
     }
     setIsSaving(true);
@@ -110,12 +110,12 @@ export function SceneEditorPage() {
       setConflictType(String(updated.冲突类型 || conflictType));
       setEmotionalCurve(String(updated.情绪曲线 || emotionalCurve));
       setInformationDelta(String(updated.信息变化 || informationDelta));
-      setFeedback('场景人工修订已保存。请重新生成草稿，再继续质量检查 → 变更提案 → 发布章节。');
+      setFeedback('场景人工修订已保存。请重新生成草稿，再继续质量检查、变更提案与发布章节。');
       setEditReason('');
       const stateHistory = await api.getSceneStateHistory(projectId, sceneId);
       setHistory(stateHistory);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败');
+    } catch {
+      setError('保存失败，请稍后重试。');
     } finally {
       setIsSaving(false);
     }
@@ -137,9 +137,9 @@ export function SceneEditorPage() {
       if (nextDraftId) {
         window.localStorage.setItem(lastDraftStorageKey, nextDraftId);
       }
-      setFeedback(`已基于当前场景重新生成草稿，draft_id=${nextDraftId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '生成草稿失败');
+      setFeedback('已基于本场景生成草稿。');
+    } catch {
+      setError('草稿生成失败，请稍后重试。');
     } finally {
       setIsGeneratingDraft(false);
     }
@@ -148,8 +148,7 @@ export function SceneEditorPage() {
   return (
     <div>
       <h2>场景安排人工修订</h2>
-      <div className="panel">用于把章节蓝图拆成具体场景，并支持人工修订后继续生成章节草稿。</div>
-      <div className="panel">project_id={projectId} / scene_id={sceneId} / blueprint_id={blueprintId || '-'}</div>
+      <div className="panel">在这里调整具体场景安排，再重新生成草稿。</div>
       <div className="panel">
         <label>
           场景目标
@@ -172,25 +171,25 @@ export function SceneEditorPage() {
           <textarea value={informationDelta} onChange={(e) => setInformationDelta(e.target.value)} rows={4} disabled={isLoading} />
         </label>
         <label>
-          修订原因（edit_reason，必填）
+          修订原因（必填）
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明为什么编辑该场景" />
         </label>
-        <button onClick={() => void onSave()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存人工修订场景'}</button>
+        <button onClick={() => void onSave()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '人工修订场景并保存'}</button>
       </div>
 
       <div className="panel">
         <h3>下游内容可能已过期</h3>
-        {dependencyItems.length === 0 ? <div>当前场景没有检测到下游内容过期项。</div> : (
+        {dependencyItems.length === 0 ? <div>当前场景没有检测到下游内容可能已过期。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
-                影响={String(item.affected_type || '-')} / 原因={String(item.reason || '-')}
+                影响步骤：{String(item.affected_type || '-')}；原因：{String(item.reason || '-')}
               </li>
             ))}
           </ul>
         )}
         <button onClick={() => void recomputeDraft()} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '重新生成下游内容：章节草稿'}
+          {isRecomputing ? '执行中...' : '重新生成草稿'}
         </button>
         <div>重新生成不会自动发布章节，也不会自动写入正式设定。</div>
       </div>
@@ -198,27 +197,27 @@ export function SceneEditorPage() {
       <div className="panel">
         <h3>继续主链</h3>
         <button onClick={() => void generateDraft()} disabled={!blueprintId || isGeneratingDraft}>
-          {isGeneratingDraft ? '草稿生成中...' : '基于该场景继续生成草稿'}
+          {isGeneratingDraft ? '草稿生成中...' : '基于本场景生成草稿'}
         </button>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
-          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          <Link to={`/projects/${projectId}/gates`}>查看质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>查看变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>发布章节</Link>
           {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>
       </div>
 
       <div className="panel">
-        <h3>场景人工编辑历史（最小审计）</h3>
+        <h3>场景人工修订记录</h3>
         {history.length === 0 ? (
-          <EmptyState text="暂无人工编辑记录" />
+          <EmptyState text="暂无人工修订记录。" />
         ) : (
           <ul>
             {history.map((item) => (
               <li key={String(item.id || Math.random())}>
-                trigger_type={String(item.trigger_type || '-')} / reason={String(item.reason || '-')} / edited_at=
+                修订来源：{String(item.trigger_type || '-')} / 修订原因：{String(item.reason || '-')} / 修订时间：
                 {String((item.transition_metadata as Record<string, unknown> | undefined)?.edited_at || item.created_at || '-')}
               </li>
             ))}
