@@ -47,7 +47,7 @@ export function ChangesetsPage() {
       await reload();
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
-        setError(`${actionLabel}失败，请确认 ChangeSet 状态与参数后重试。`);
+        setError(`${actionLabel}失败，请确认变更提案状态与参数后重试。`);
         return;
       }
       setError(toActionErrorMessage(actionLabel, e, '请确认当前提议状态是否允许该操作。'));
@@ -64,8 +64,9 @@ export function ChangesetsPage() {
 
   return (
     <div>
-      <h2>ChangeSet 审批页</h2>
-      <div className="panel">项目域：{projectId || '-'}</div>
+      <h2>变更提案</h2>
+      <div className="panel">用于确认哪些内容要写入正式设定，审批并应用后再进入发布章节。</div>
+      <div className="panel">项目范围：{projectId || '-'}</div>
       <div className="panel">
         <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder="draft_id" />
         <button
@@ -82,8 +83,8 @@ export function ChangesetsPage() {
                       rationale: '从草稿提议',
                       auto_create_changeset: true,
                     }),
-                  '已生成 ChangeSet 提议',
-                  '从草稿生成 ChangeSet 提议',
+                  '已生成变更提案',
+                  '从草稿生成变更提案',
                 );
                 if (draftId.trim()) {
                   window.localStorage.setItem(lastDraftStorageKey, draftId.trim());
@@ -94,14 +95,14 @@ export function ChangesetsPage() {
             })()
           }
         >
-          {isCreatingFromDraft ? '生成中...' : '从草稿生成提议'}
+          {isCreatingFromDraft ? '生成中...' : '从草稿生成变更提案'}
         </button>
       </div>
 
-      {isCreatingFromDraft && <LoadingState text="正在从草稿生成 ChangeSet 提议..." />}
+      {isCreatingFromDraft && <LoadingState text="正在从草稿生成变更提案..." />}
       {feedback && <ActionSuccess text={feedback} />}
       {error && <ActionFailure text={error} />}
-      {loading && <LoadingState text="ChangeSet 加载中" />}
+      {loading && <LoadingState text="变更提案加载中" />}
 
       {!loading && (
         <div className="panel">
@@ -112,7 +113,7 @@ export function ChangesetsPage() {
         </div>
       )}
 
-      {!loading && scoped.length === 0 && <EmptyState text="当前项目暂无 ChangeSet" />}
+      {!loading && scoped.length === 0 && <EmptyState text="还没有变更提案，请先从草稿生成提案。" />}
       <ul>
         {scoped.map((cs) => (
           <li key={cs.id} className="panel">
@@ -127,7 +128,7 @@ export function ChangesetsPage() {
                   if (runningActionById[cs.id]) return;
                   setRunningActionById((prev) => ({ ...prev, [cs.id]: 'approve' }));
                   try {
-                    await run(() => api.approveChangeSet(cs.id, 'frontend_reviewer'), '已审批', '审批 ChangeSet');
+                    await run(() => api.approveChangeSet(cs.id, 'frontend_reviewer'), '已审批', '审批变更提案');
                   } finally {
                     setRunningActionById((prev) => ({ ...prev, [cs.id]: undefined }));
                   }
@@ -143,7 +144,7 @@ export function ChangesetsPage() {
                   if (runningActionById[cs.id]) return;
                   setRunningActionById((prev) => ({ ...prev, [cs.id]: 'reject' }));
                   try {
-                    await run(() => api.rejectChangeSet(cs.id, 'frontend_reviewer', '不通过'), '已驳回', '驳回 ChangeSet');
+                    await run(() => api.rejectChangeSet(cs.id, 'frontend_reviewer', '不通过'), '已驳回', '驳回变更提案');
                   } finally {
                     setRunningActionById((prev) => ({ ...prev, [cs.id]: undefined }));
                   }
@@ -159,7 +160,7 @@ export function ChangesetsPage() {
                   if (runningActionById[cs.id]) return;
                   setRunningActionById((prev) => ({ ...prev, [cs.id]: 'apply' }));
                   try {
-                    await run(() => api.applyChangeSet(cs.id), '已应用', '应用 ChangeSet');
+                    await run(() => api.applyChangeSet(cs.id), '已应用', '应用变更提案');
                   } finally {
                     setRunningActionById((prev) => ({ ...prev, [cs.id]: undefined }));
                   }
@@ -178,7 +179,7 @@ export function ChangesetsPage() {
                     await run(
                       () => api.rollbackChangeSet(cs.id, { rolled_back_by: 'frontend_reviewer', reason: 'UI回滚' }),
                       '已回滚',
-                      '回滚 ChangeSet',
+                      '回滚变更提案',
                     );
                   } finally {
                     setRunningActionById((prev) => ({ ...prev, [cs.id]: undefined }));
@@ -197,7 +198,7 @@ export function ChangesetsPage() {
         <div className="project-nav">
           <Link to={`/projects/${projectId}/objects`}>回对象页</Link>
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/published`}>去发布/摘要</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
           <Link to={`/projects/${projectId}/overview`}>回项目概览</Link>
         </div>
       </div>

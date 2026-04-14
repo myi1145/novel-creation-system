@@ -20,6 +20,12 @@ type ReleaseReadinessPayload = {
   checks: ReleaseReadinessCheck[];
 };
 
+function toOverallStatusLabel(status: string): string {
+  if (status === 'ready_to_publish') return '可发布';
+  if (status === 'needs_attention') return '需处理后再发布';
+  return status || '-';
+}
+
 export function ReleaseReadinessPage() {
   const { projectId = '', chapterNo = '' } = useParams();
   const chapterNoNum = Number(chapterNo);
@@ -40,7 +46,7 @@ export function ReleaseReadinessPage() {
       })
       .catch((e) => {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : '获取发布前一致性验收失败');
+        setError(e instanceof Error ? e.message : '获取发布前检查结果失败');
       })
       .finally(() => {
         if (!mounted) return;
@@ -55,19 +61,20 @@ export function ReleaseReadinessPage() {
 
   return (
     <div>
-      <h2>发布前一致性验收</h2>
+      <h2>发布前检查</h2>
+      <div className="panel">用于确认发布前是否还有未处理问题，并给出下一步处理入口。</div>
       <div className="panel">project_id={projectId} | chapter_no={chapterNoNum}</div>
       {isLoading && <ActionSuccess text="加载中..." />}
       {error && <ActionFailure text={error} />}
-      {!isLoading && !error && !data && <EmptyState text="暂无验收数据" />}
+      {!isLoading && !error && !data && <EmptyState text="还没有发布前检查结果。" />}
       {data && (
         <>
           <div className="panel">
-            <div>总状态：<strong>{data.overall_status}</strong></div>
+            <div>总状态：<strong>{toOverallStatusLabel(data.overall_status)}</strong></div>
             <div>总结：{data.summary}</div>
           </div>
           {checks.length === 0 ? (
-            <EmptyState text="当前未返回检查项" />
+            <EmptyState text="当前没有需要处理的检查项。" />
           ) : (
             checks.map((check) => (
               <div key={check.key} className="panel">
@@ -84,7 +91,7 @@ export function ReleaseReadinessPage() {
       <div className="panel">
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/published`}>回发布页</Link>
+          <Link to={`/projects/${projectId}/published`}>回发布章节</Link>
         </div>
       </div>
     </div>

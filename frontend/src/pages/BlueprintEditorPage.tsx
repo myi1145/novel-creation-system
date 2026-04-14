@@ -90,7 +90,7 @@ export function BlueprintEditorPage() {
   const save = async () => {
     if (isSaving) return;
     if (!editReason.trim()) {
-      setError('请填写 edit_reason');
+      setError('请填写修订原因（edit_reason）');
       return;
     }
     setIsSaving(true);
@@ -110,7 +110,7 @@ export function BlueprintEditorPage() {
       setSummary(String(updated.summary || summary));
       setAdvancesText(toMultiline(updated.advances));
       setRisksText(toMultiline(updated.risks));
-      setFeedback('蓝图人工修订已保存，可继续场景拆解与草稿生成。');
+      setFeedback('蓝图人工修订已保存，可继续生成场景安排与草稿生成。');
       setEditReason('');
       const stateHistory = await api.getBlueprintStateHistory(projectId, blueprintId);
       setHistory(stateHistory);
@@ -164,36 +164,37 @@ export function BlueprintEditorPage() {
 
   return (
     <div>
-      <h2>蓝图人工修订</h2>
+      <h2>章节蓝图人工修订</h2>
+      <div className="panel">用于确定本章的剧情方向和结构，可在此人工修订后继续生成场景安排与章节草稿。</div>
       <div className="panel">project_id={projectId} / blueprint_id={blueprintId}</div>
 
       <div className="panel">
         <label>
-          标题提示（title_hint）
+          标题提示
           <input value={titleHint} onChange={(e) => setTitleHint(e.target.value)} disabled={isLoading} />
         </label>
         <label>
-          本章摘要（summary）
+          本章摘要
           <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={6} disabled={isLoading} />
         </label>
         <label>
-          推进点（advances，每行一条）
+          推进点（每行一条）
           <textarea value={advancesText} onChange={(e) => setAdvancesText(e.target.value)} rows={5} disabled={isLoading} />
         </label>
         <label>
-          风险点（risks，每行一条）
+          风险点（每行一条）
           <textarea value={risksText} onChange={(e) => setRisksText(e.target.value)} rows={5} disabled={isLoading} />
         </label>
         <label>
-          edit_reason（必填）
+          修订原因（edit_reason，必填）
           <textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={3} placeholder="说明你为何编辑该蓝图" />
         </label>
-        <button onClick={() => void save()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存蓝图人工修订'}</button>
+        <button onClick={() => void save()} disabled={isSaving || isLoading}>{isSaving ? '保存中...' : '保存人工修订蓝图'}</button>
       </div>
 
       <div className="panel">
-        <h3>下游可能过期提示</h3>
-        {dependencyItems.length === 0 ? <div>当前蓝图暂无下游过期项。</div> : (
+        <h3>下游内容可能已过期</h3>
+        {dependencyItems.length === 0 ? <div>当前蓝图没有检测到下游内容过期项。</div> : (
           <ul>
             {dependencyItems.map((item) => (
               <li key={String(item.stale_id || Math.random())}>
@@ -203,25 +204,25 @@ export function BlueprintEditorPage() {
           </ul>
         )}
         <button onClick={() => void recompute('recompute_scenes')} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '人工确认重跑场景拆解'}
+          {isRecomputing ? '执行中...' : '重新生成下游内容：场景安排'}
         </button>
         <button onClick={() => void recompute('recompute_draft')} disabled={isRecomputing || dependencyItems.length === 0}>
-          {isRecomputing ? '执行中...' : '人工确认重跑草稿生成'}
+          {isRecomputing ? '执行中...' : '重新生成下游内容：章节草稿'}
         </button>
-        <div>说明：仅重跑下游产物，不自动发布，不写 Canon。</div>
+        <div>说明：仅重新生成下游内容，不会自动发布章节。</div>
       </div>
 
       <div className="panel">
         <h3>继续主链</h3>
-        <button onClick={() => void decompose()} disabled={isDecomposing}>{isDecomposing ? '场景拆解中...' : '继续场景拆解'}</button>
-        <button onClick={() => void generateDraft()} disabled={isGeneratingDraft}>{isGeneratingDraft ? '草稿生成中...' : '继续生成草稿'}</button>
+        <button onClick={() => void decompose()} disabled={isDecomposing}>{isDecomposing ? '场景拆解中...' : '继续生成场景安排'}</button>
+        <button onClick={() => void generateDraft()} disabled={isGeneratingDraft}>{isGeneratingDraft ? '草稿生成中...' : '继续生成章节草稿'}</button>
         <div>scene_ids: {sceneIds.join('，') || '-'}</div>
         <div className="project-nav">
           <Link to={`/projects/${projectId}/workbench`}>回工作台</Link>
-          <Link to={`/projects/${projectId}/gates`}>去 Gate</Link>
-          <Link to={`/projects/${projectId}/changesets`}>去 ChangeSet</Link>
-          <Link to={`/projects/${projectId}/published`}>去 Publish</Link>
-          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>编辑草稿</Link> : null}
+          <Link to={`/projects/${projectId}/gates`}>去质量检查</Link>
+          <Link to={`/projects/${projectId}/changesets`}>去变更提案</Link>
+          <Link to={`/projects/${projectId}/published`}>去发布章节</Link>
+          {draftId ? <Link to={`/projects/${projectId}/drafts/${draftId}/edit`}>人工修订草稿</Link> : null}
           <button type="button" onClick={() => navigate(`/projects/${projectId}/workbench`)}>返回工作台继续</button>
         </div>
       </div>
