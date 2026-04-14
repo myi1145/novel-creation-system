@@ -686,6 +686,7 @@ export function WorkbenchPage() {
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/release-readiness`}>发布前检查</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/publish-history`}>章节发布历史</Link>
           <Link to={`/projects/${projectId}/chapters/${chapterNo}/version-diff`}>版本差异与重发建议</Link>
+          <Link to={`/projects/${projectId}/chapters/${chapterNo}/published-reader`}>阅读已发布章节</Link>
         </div>
       </div>
 

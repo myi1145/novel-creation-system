@@ -168,6 +168,7 @@ export function PublishedPage() {
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/release-readiness`}>进入发布前检查</Link>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/publish-history`}>章节发布历史</Link>
       <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/version-diff`}>版本差异与重发建议</Link>
+      <Link to={`/projects/${projectId}/chapters/${Number(chapterNoForReadiness) || 1}/published-reader`}>阅读已发布章节</Link>
     </div>
     {(isPublishing || isRefreshingPublished || isRefreshingRecords || isSummarizing || isLoadingLatestSummary) && <ActionSuccess text="正在执行请求，请稍候..." />}
     {feedback && <ActionSuccess text={feedback}/>} {error && <ActionFailure text={error}/>} 
