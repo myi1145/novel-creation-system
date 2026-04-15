@@ -23,6 +23,7 @@ npm run build
 - `/projects/:projectId`（默认重定向到 `/projects/:projectId/overview`）
 - `/projects/:projectId/overview`
 - `/projects/:projectId/story-planning`
+- `/projects/:projectId/story-directory`
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
@@ -52,6 +53,17 @@ npm run build
 - 工作台蓝图候选选择在 `WorkbenchPage` 内完成，不新增后端聚合接口。
 - 题材页语义为“题材配置库管理（查看 + 导入）”，不伪装项目级题材切换。
 - ChangeSet 页在项目路由下按 `project_id` 前端过滤展示，并对缺少项目归属字段的记录做排除提示。
+
+
+## 章节目录对象（本轮最小闭环）
+
+- 入口：`/projects/:projectId/story-directory`（项目内导航“章节目录”）。
+- 用途：将“全书规划”下沉为逐章目录，维护章节标题、职责、推进目标、关键实体与设定落点。
+- 关系：位于 `StoryPlanning` 之后，位于卡槽候选与 `ChapterGoal/ChapterBlueprint` 之前。
+- 当前阶段边界：
+  - 不自动生成候选卡。
+  - 不写 Canon。
+  - 不生成 ChangeSet。
 
 ## 作者端术语说明
 

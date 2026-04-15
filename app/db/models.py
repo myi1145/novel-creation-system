@@ -52,6 +52,26 @@ class StoryPlanningORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
 
+
+
+class StoryDirectoryORM(Base):
+    __tablename__ = "story_directories"
+    __table_args__ = (
+        UniqueConstraint("project_id", name="uq_story_directories_project"),
+        CheckConstraint("directory_status in ('draft', 'confirmed')", name="ck_story_directories_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_id)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    story_planning_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("story_plannings.id", ondelete="SET NULL"), nullable=True)
+    directory_title: Mapped[str] = mapped_column(String(200), default="全书章节目录", nullable=False)
+    directory_summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    directory_status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
+    chapter_items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    last_update_source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
 class WorkflowRunORM(Base):
     __tablename__ = "workflow_runs"
 

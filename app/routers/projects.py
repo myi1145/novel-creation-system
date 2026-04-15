@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ValidationError
 from app.db.session import get_db
 from app.schemas.project import CreateProjectRequest
+from app.schemas.story_directory import StoryDirectoryUpsert
 from app.schemas.story_planning import StoryPlanningUpsert
 from app.schemas.structured_cards import (
     CharacterCardCreate,
@@ -20,6 +21,7 @@ from app.schemas.structured_cards import (
     TerminologyCardUpdate,
 )
 from app.services.project_service import project_service
+from app.services.story_directory_service import story_directory_service
 from app.services.story_planning_service import story_planning_service
 from app.services.structured_card_service import structured_card_service
 from app.utils.response import success_response
@@ -39,6 +41,20 @@ def list_projects(db: Session = Depends(get_db)) -> dict:
     return success_response(data=projects)
 
 
+
+
+@router.get("/{project_id}/story-directory")
+def get_story_directory(project_id: str, db: Session = Depends(get_db)) -> dict:
+    item = story_directory_service.get_story_directory(db=db, project_id=project_id)
+    if item is None:
+        return success_response(data=None, message="尚未创建章节目录")
+    return success_response(data=item.model_dump(mode="json"))
+
+
+@router.put("/{project_id}/story-directory")
+def upsert_story_directory(project_id: str, request: StoryDirectoryUpsert, db: Session = Depends(get_db)) -> dict:
+    item = story_directory_service.upsert_story_directory(db=db, project_id=project_id, request=request)
+    return success_response(data=item.model_dump(mode="json"), message="章节目录已保存")
 
 
 @router.get("/{project_id}/story-planning")
