@@ -713,20 +713,48 @@ def _normalize_story_planning_payload(data: dict[str, Any], *, provider: str, mo
 
 
 def _normalize_story_directory_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
+    def normalize_str_list(value: Any) -> list[str] | None:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return None
+        normalized_items: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                return None
+            text = item.strip()
+            if text:
+                normalized_items.append(text)
+        return normalized_items
+
     chapter_items = []
     for item in list(data.get("chapter_items") or []):
         if not isinstance(item, dict):
             continue
+        chapter_no = item.get("chapter_no")
+        chapter_title = str(item.get("chapter_title") or "").strip()
+        required_entities = normalize_str_list(item.get("required_entities"))
+        required_seed_points = normalize_str_list(item.get("required_seed_points"))
+        foreshadow_constraints = normalize_str_list(item.get("foreshadow_constraints"))
+        if (
+            not isinstance(chapter_no, int)
+            or chapter_no <= 0
+            or not chapter_title
+            or required_entities is None
+            or required_seed_points is None
+            or foreshadow_constraints is None
+        ):
+            continue
         chapter_items.append(
             {
-                "chapter_no": item.get("chapter_no"),
-                "chapter_title": str(item.get("chapter_title") or "").strip(),
+                "chapter_no": chapter_no,
+                "chapter_title": chapter_title,
                 "chapter_role": str(item.get("chapter_role") or "").strip(),
                 "chapter_goal": str(item.get("chapter_goal") or "").strip(),
                 "stage_label": str(item.get("stage_label") or "").strip(),
-                "required_entities": [str(x).strip() for x in list(item.get("required_entities") or []) if str(x).strip()],
-                "required_seed_points": [str(x).strip() for x in list(item.get("required_seed_points") or []) if str(x).strip()],
-                "foreshadow_constraints": [str(x).strip() for x in list(item.get("foreshadow_constraints") or []) if str(x).strip()],
+                "required_entities": required_entities,
+                "required_seed_points": required_seed_points,
+                "foreshadow_constraints": foreshadow_constraints,
             }
         )
     return {
