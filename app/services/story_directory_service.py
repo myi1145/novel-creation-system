@@ -123,7 +123,9 @@ class StoryDirectoryService:
         planning: StoryPlanningORM,
         request: StoryDirectoryGenerateRequest,
     ) -> dict[str, Any]:
-        target_chapter_count = request.target_chapter_count or self._infer_target_chapter_count(planning)
+        target_chapter_count = request.target_chapter_count
+        if not isinstance(target_chapter_count, int) or target_chapter_count <= 0:
+            target_chapter_count = self._infer_target_chapter_count(planning)
         return {
             "project_id": project.id,
             "project_name": project.project_name,
