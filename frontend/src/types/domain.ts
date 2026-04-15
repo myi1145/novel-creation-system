@@ -44,6 +44,39 @@ export interface StoryPlanningUpsertPayload {
   core_seed_summary: string;
   planning_status: 'draft' | 'confirmed';
 }
+
+export interface StoryDirectoryChapterItem {
+  chapter_no: number;
+  chapter_title: string;
+  chapter_role: string;
+  chapter_goal: string;
+  stage_label: string;
+  required_entities: string[];
+  required_seed_points: string[];
+  foreshadow_constraints: string[];
+}
+
+export interface StoryDirectory {
+  id: string;
+  project_id: string;
+  story_planning_id?: string | null;
+  directory_title: string;
+  directory_summary: string;
+  directory_status: 'draft' | 'confirmed';
+  chapter_items: StoryDirectoryChapterItem[];
+  last_update_source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryDirectoryUpsertPayload {
+  story_planning_id?: string | null;
+  directory_title: string;
+  directory_summary: string;
+  directory_status: 'draft' | 'confirmed';
+  chapter_items: StoryDirectoryChapterItem[];
+}
+
 export interface CharacterCard {
   id: number;
   project_id: string;
