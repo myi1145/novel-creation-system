@@ -47,6 +47,7 @@ export function StoryDirectoryPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState('');
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const load = async () => {
     if (!projectId) return;
@@ -140,6 +141,30 @@ export function StoryDirectoryPage() {
     }
   };
 
+  const onGenerate = async () => {
+    if (!projectId || isGenerating) return;
+    setFeedback('');
+    setError('');
+    setIsGenerating(true);
+    try {
+      const result = await api.generateStoryDirectory(projectId, {});
+      setForm((prev) => ({
+        ...prev,
+        directory_title: result.data.directory_title || '全书章节目录',
+        directory_summary: result.data.directory_summary || '',
+        directory_status: result.data.directory_status || 'draft',
+        chapter_items: Array.isArray(result.data.chapter_items) && result.data.chapter_items.length > 0
+          ? result.data.chapter_items
+          : [createEmptyChapterItem(1)],
+      }));
+      setFeedback('章节目录草稿已生成，请检查后保存。');
+    } catch {
+      setError('生成失败，请先确认已保存全书规划，或稍后重试。');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div>
       <h2>章节目录</h2>
@@ -152,6 +177,11 @@ export function StoryDirectoryPage() {
 
       <form className="panel" onSubmit={onSubmit}>
         <h3>{hasDirectory ? '编辑章节目录' : '新建章节目录'}</h3>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <button type="button" onClick={onGenerate} disabled={isGenerating}>
+            {isGenerating ? '正在生成章节目录...' : '生成章节目录'}
+          </button>
+        </div>
 
         <label>
           目录标题

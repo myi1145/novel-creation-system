@@ -94,6 +94,22 @@ export interface StoryDirectoryUpsertPayload {
   chapter_items: StoryDirectoryChapterItem[];
 }
 
+export interface StoryDirectoryGeneratePayload {
+  target_chapter_count?: number;
+}
+
+export interface StoryDirectoryGenerateResult {
+  project_id: string;
+  generated: boolean;
+  data: {
+    directory_title: string;
+    directory_summary: string;
+    directory_status: 'draft' | 'confirmed';
+    chapter_items: StoryDirectoryChapterItem[];
+  };
+  message: string;
+}
+
 export interface CharacterCard {
   id: number;
   project_id: string;

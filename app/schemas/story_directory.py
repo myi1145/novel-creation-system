@@ -39,3 +39,21 @@ class StoryDirectoryResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StoryDirectoryGenerateRequest(BaseModel):
+    target_chapter_count: int | None = None
+
+
+class StoryDirectoryGenerateData(BaseModel):
+    directory_title: str
+    directory_summary: str
+    directory_status: DirectoryStatus = "draft"
+    chapter_items: list[StoryDirectoryChapterItem]
+
+
+class StoryDirectoryGenerateResponse(BaseModel):
+    project_id: str
+    generated: bool
+    data: StoryDirectoryGenerateData
+    message: str

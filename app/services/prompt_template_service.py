@@ -45,6 +45,40 @@ DEFAULT_PROMPT_TEMPLATES: list[dict[str, Any]] = [
         "template_metadata": {"description": "全书规划生成默认模板"},
     },
     {
+        "template_key": "story_planner.generate_story_directory",
+        "agent_type": "story_planner",
+        "action_name": "generate_story_directory",
+        "provider_scope": "all",
+        "scope_type": "global",
+        "scope_key": "__global__",
+        "system_template": (
+            "你是小说章节目录规划 Agent。请基于已保存的全书规划生成章节目录草稿。"
+            "必须严格返回 JSON 对象，不要输出 Markdown，不要输出正文。"
+        ),
+        "user_template": (
+            "请基于以下信息生成 StoryDirectory 草稿。\n"
+            "project_name: {project_name}\n"
+            "premise: {premise}\n"
+            "genre_id: {genre_id}\n"
+            "worldview: {worldview}\n"
+            "main_outline: {main_outline}\n"
+            "volume_plan: {volume_plan}\n"
+            "core_seed_summary: {core_seed_summary}\n"
+            "target_chapter_count: {target_chapter_count}\n"
+            "输出要求：\n"
+            "1) 目录必须基于世界观、主线、分卷/阶段规划，不得脱离全书规划；\n"
+            "2) 每章必须给出 chapter_role 与 chapter_goal；\n"
+            "3) 每章必须给出 required_entities、required_seed_points、foreshadow_constraints；\n"
+            "4) 输出仅包含 directory_title、directory_summary、chapter_items，不要输出正文；\n"
+            "5) chapter_items 至少 1 章，chapter_no 从 1 开始递增。"
+        ),
+        "output_contract": {
+            "type": "json_object",
+            "fields": ["directory_title", "directory_summary", "chapter_items"],
+        },
+        "template_metadata": {"description": "章节目录生成默认模板"},
+    },
+    {
         "template_key": "planner.generate_blueprints",
         "agent_type": "planner",
         "action_name": "generate_blueprints",
@@ -515,7 +549,7 @@ class PromptTemplateService:
         overlay = "\n".join(overlay_lines)
         if genre_rulepack_summary in user_prompt:
             return system_prompt, user_prompt
-        if action_name in {"generate_story_planning", "generate_blueprints", "decompose_scenes", "generate_draft", "revise_draft", "review_gate", "propose_changeset", "summarize_chapter"}:
+        if action_name in {"generate_story_planning", "generate_story_directory", "generate_blueprints", "decompose_scenes", "generate_draft", "revise_draft", "review_gate", "propose_changeset", "summarize_chapter"}:
             user_prompt = f"{user_prompt}\n\n【题材配置层 / RulePack】\n{overlay}"
         return system_prompt, user_prompt
 

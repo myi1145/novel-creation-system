@@ -87,6 +87,7 @@ class AgentProvider(Protocol):
     name: str
 
     def generate_story_planning(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
+    def generate_story_directory(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def decompose_scenes(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def generate_draft(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> dict[str, Any]: ...
@@ -130,6 +131,37 @@ class MockAgentProvider:
                 "【核心地点种子】起点区域、中盘扩展区域、终局关键区域。\n"
                 "【核心术语种子】力量体系术语、组织规则术语、历史事件术语。"
             ),
+        }
+
+    def generate_story_directory(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> dict[str, Any]:
+        project_name = str(context.get("project_name") or "未命名项目")
+        target = int(context.get("target_chapter_count") or 10)
+        target = max(1, min(target, 30))
+        worldview = str(context.get("worldview") or "")
+        outline = str(context.get("main_outline") or "")
+        stage_hint = "第一卷 / 起势阶段"
+        chapter_items: list[dict[str, Any]] = []
+        for idx in range(1, target + 1):
+            chapter_items.append(
+                {
+                    "chapter_no": idx,
+                    "chapter_title": f"第{idx}章：{project_name}推进节点{idx}",
+                    "chapter_role": "推进主线并承接上一章结果",
+                    "chapter_goal": f"完成第{idx}章关键推进，保持主线连续性。",
+                    "stage_label": stage_hint if idx <= max(3, target // 3) else "中盘推进阶段",
+                    "required_entities": ["主角", "关键配角", "核心地点"],
+                    "required_seed_points": ["主线冲突推进", "设定点落地"],
+                    "foreshadow_constraints": ["保留后续反转空间", "不提前揭示终局答案"],
+                }
+            )
+        return {
+            "directory_title": f"{project_name}章节目录草稿",
+            "directory_summary": (
+                "本目录基于全书规划生成，用于逐章分配职责、推进目标与设定落点。"
+                f"世界观要点：{worldview[:60] or '按既有全书规划执行'}。"
+                f"主线要点：{outline[:60] or '按主线大纲分阶段推进'}。"
+            ),
+            "chapter_items": chapter_items,
         }
 
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> list[dict[str, Any]]:
@@ -343,6 +375,9 @@ class OpenAICompatibleProvider:
     def generate_story_planning(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> str:
         return self._chat_json(system_prompt=prompt.system_prompt, user_prompt=prompt.user_prompt)
 
+    def generate_story_directory(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> str:
+        return self._chat_json(system_prompt=prompt.system_prompt, user_prompt=prompt.user_prompt)
+
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> str:
         return self._chat_json(system_prompt=prompt.system_prompt, user_prompt=prompt.user_prompt)
 
@@ -505,6 +540,7 @@ def _ensure_list(text: str) -> list[dict[str, Any]]:
 
 STRUCTURED_OUTPUT_SPECS: dict[str, dict[str, Any]] = {
     "generate_story_planning": {"output_type": "StoryPlanningDraft", "expected_root": "object"},
+    "generate_story_directory": {"output_type": "StoryDirectoryDraft", "expected_root": "object"},
     "generate_blueprints": {"output_type": "CandidateBlueprintList", "expected_root": "list"},
     "decompose_scenes": {"output_type": "ScenePlanResult", "expected_root": "list"},
     "review_gate": {"output_type": "GateDecisionDraft", "expected_root": "object"},
@@ -676,6 +712,33 @@ def _normalize_story_planning_payload(data: dict[str, Any], *, provider: str, mo
     }
 
 
+def _normalize_story_directory_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
+    chapter_items = []
+    for item in list(data.get("chapter_items") or []):
+        if not isinstance(item, dict):
+            continue
+        chapter_items.append(
+            {
+                "chapter_no": item.get("chapter_no"),
+                "chapter_title": str(item.get("chapter_title") or "").strip(),
+                "chapter_role": str(item.get("chapter_role") or "").strip(),
+                "chapter_goal": str(item.get("chapter_goal") or "").strip(),
+                "stage_label": str(item.get("stage_label") or "").strip(),
+                "required_entities": [str(x).strip() for x in list(item.get("required_entities") or []) if str(x).strip()],
+                "required_seed_points": [str(x).strip() for x in list(item.get("required_seed_points") or []) if str(x).strip()],
+                "foreshadow_constraints": [str(x).strip() for x in list(item.get("foreshadow_constraints") or []) if str(x).strip()],
+            }
+        )
+    return {
+        "directory_title": str(data.get("directory_title") or "").strip(),
+        "directory_summary": str(data.get("directory_summary") or "").strip(),
+        "directory_status": "draft",
+        "chapter_items": chapter_items,
+        "provider": provider,
+        "model": model,
+    }
+
+
 def _normalize_chapter_summary_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
     return {
         "summary": str(data.get("summary") or "已生成章节摘要。"),
@@ -800,6 +863,21 @@ class AgentGateway:
             normalized.pop("model", None)
             return normalized, _build_parse_report(method_name, decision="accepted" if not issues else "degraded", route="continue", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
 
+        if method_name == "generate_story_directory":
+            normalized = _normalize_story_directory_payload(business_payload, provider=provider_name, model=model_name)
+            required_fields = ("directory_title", "directory_summary")
+            missing_fields = [field for field in required_fields if not normalized.get(field)]
+            if missing_fields:
+                issues.append(_build_parse_issue("E003", "P1", "L2", f"章节目录缺少必填字段: {', '.join(missing_fields)}"))
+            if not normalized.get("chapter_items"):
+                issues.append(_build_parse_issue("E003", "P1", "L2", "章节目录缺少 chapter_items"))
+            if issues:
+                report = _build_parse_report(method_name, decision="reask", route="reask", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+                raise AgentStructuredOutputError("章节目录结构化输出缺少必填字段", error_code="parse_e003", severity="P1", decision="reask", parse_report=report)
+            normalized.pop("provider", None)
+            normalized.pop("model", None)
+            return normalized, _build_parse_report(method_name, decision="accepted", route="continue", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+
         if method_name == "review_gate":
             normalized = _normalize_gate_review_payload(business_payload, provider=provider_name, model=model_name)
             allowed = {"passed", "warning", "failed"}
@@ -873,6 +951,9 @@ class AgentGateway:
 
     def generate_story_planning(self, db: Session | None, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
         return self._invoke(db=db, action_name="generate_story_planning", agent_type="story_planner", method_name="generate_story_planning", context=context, audit_context=audit_context)
+
+    def generate_story_directory(self, db: Session | None, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
+        return self._invoke(db=db, action_name="generate_story_directory", agent_type="story_planner", method_name="generate_story_directory", context=context, audit_context=audit_context)
 
     def generate_blueprints(self, db: Session | None, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
         return self._invoke(db=db, action_name="generate_blueprints", agent_type="planner", method_name="generate_blueprints", context=context, audit_context=audit_context)
