@@ -126,6 +126,9 @@ class StoryDirectoryService:
         target_chapter_count = request.target_chapter_count
         if not isinstance(target_chapter_count, int) or target_chapter_count <= 0:
             target_chapter_count = self._infer_target_chapter_count(planning)
+        if not isinstance(target_chapter_count, int) or target_chapter_count <= 0:
+            target_chapter_count = 10
+        target_chapter_count = self._clamp_target_chapter_count(target_chapter_count)
         return {
             "project_id": project.id,
             "project_name": project.project_name,
@@ -201,6 +204,10 @@ class StoryDirectoryService:
             if parsed > 0:
                 return parsed
         return 10
+
+    @staticmethod
+    def _clamp_target_chapter_count(value: int) -> int:
+        return max(1, min(value, 30))
 
 
 story_directory_service = StoryDirectoryService()
