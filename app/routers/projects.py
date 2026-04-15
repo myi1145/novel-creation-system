@@ -9,7 +9,7 @@ from app.core.exceptions import ValidationError
 from app.db.session import get_db
 from app.schemas.project import CreateProjectRequest
 from app.schemas.story_directory import StoryDirectoryUpsert
-from app.schemas.story_planning import StoryPlanningUpsert
+from app.schemas.story_planning import StoryPlanningGenerateRequest, StoryPlanningUpsert
 from app.schemas.structured_cards import (
     CharacterCardCreate,
     CharacterCardUpdate,
@@ -71,6 +71,11 @@ def upsert_story_planning(project_id: str, request: StoryPlanningUpsert, db: Ses
     item = story_planning_service.upsert_story_planning(db=db, project_id=project_id, request=request)
     return success_response(data=item.model_dump(mode="json"), message="全书规划已保存")
 
+
+@router.post("/{project_id}/story-planning/generate")
+def generate_story_planning(project_id: str, request: StoryPlanningGenerateRequest, db: Session = Depends(get_db)) -> dict:
+    item = story_planning_service.generate_story_planning(db=db, project_id=project_id, request=request)
+    return success_response(data=item.model_dump(mode="json"), message=item.message)
 
 
 @router.post("/{project_id}/story-planning/card-candidates/generate")

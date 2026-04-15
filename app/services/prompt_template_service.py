@@ -13,6 +13,38 @@ from app.schemas.prompt import CreatePromptTemplateRequest, PromptResolutionPrev
 
 DEFAULT_PROMPT_TEMPLATES: list[dict[str, Any]] = [
     {
+        "template_key": "story_planner.generate_story_planning",
+        "agent_type": "story_planner",
+        "action_name": "generate_story_planning",
+        "provider_scope": "all",
+        "scope_type": "global",
+        "scope_key": "__global__",
+        "system_template": (
+            "你是小说全书规划 Agent。请基于项目基础信息输出创作规划草稿。"
+            "必须严格返回 JSON 对象，不要输出 Markdown，不要输出正文。"
+        ),
+        "user_template": (
+            "请生成全书规划草稿，覆盖 worldview/main_outline/volume_plan/core_seed_summary 四个字段。\n"
+            "project_name: {project_name}\n"
+            "premise: {premise}\n"
+            "genre_id: {genre_id}\n"
+            "genre_name: {genre_name}\n"
+            "genre_rule_summary: {genre_rule_summary}\n"
+            "target_chapter_count: {target_chapter_count}\n"
+            "tone: {tone}\n"
+            "要求：\n"
+            "1) worldview 需包含世界规则、题材框架、力量/社会/时代背景、创作边界；\n"
+            "2) main_outline 需包含主角长期目标、核心冲突、长程推进方向；\n"
+            "3) volume_plan 需按阶段/分卷给出推进任务、阶段目标与冲突；\n"
+            "4) core_seed_summary 需给出角色/势力/地点/术语四类种子摘要。"
+        ),
+        "output_contract": {
+            "type": "json_object",
+            "fields": ["worldview", "main_outline", "volume_plan", "core_seed_summary"],
+        },
+        "template_metadata": {"description": "全书规划生成默认模板"},
+    },
+    {
         "template_key": "planner.generate_blueprints",
         "agent_type": "planner",
         "action_name": "generate_blueprints",
@@ -483,7 +515,7 @@ class PromptTemplateService:
         overlay = "\n".join(overlay_lines)
         if genre_rulepack_summary in user_prompt:
             return system_prompt, user_prompt
-        if action_name in {"generate_blueprints", "decompose_scenes", "generate_draft", "revise_draft", "review_gate", "propose_changeset", "summarize_chapter"}:
+        if action_name in {"generate_story_planning", "generate_blueprints", "decompose_scenes", "generate_draft", "revise_draft", "review_gate", "propose_changeset", "summarize_chapter"}:
             user_prompt = f"{user_prompt}\n\n【题材配置层 / RulePack】\n{overlay}"
         return system_prompt, user_prompt
 

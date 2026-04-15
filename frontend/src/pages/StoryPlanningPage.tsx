@@ -25,6 +25,7 @@ export function StoryPlanningPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState('');
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const load = async () => {
     if (!projectId) return;
@@ -85,12 +86,39 @@ export function StoryPlanningPage() {
     }
   };
 
+  const onGenerate = async () => {
+    if (!projectId || isGenerating) return;
+    setFeedback('');
+    setError('');
+    setIsGenerating(true);
+    try {
+      const generated = await api.generateStoryPlanning(projectId);
+      setForm({
+        worldview: generated.data.worldview || '',
+        main_outline: generated.data.main_outline || '',
+        volume_plan: generated.data.volume_plan || '',
+        core_seed_summary: generated.data.core_seed_summary || '',
+        planning_status: form.planning_status,
+      });
+      setFeedback('全书规划草稿已生成，请检查后保存。');
+    } catch {
+      setError('生成失败，请稍后重试。');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div>
       <h2>全书规划</h2>
       <div className="panel">
         <p><Link to={`/projects/${projectId}/story-planning/card-candidates`}>生成卡槽候选</Link></p>
         用于维护整部小说的世界观、主线大纲和分卷/阶段规划。这里的内容会作为后续章节创作的重要参考，但本轮不会自动写入正式设定，也不会自动生成角色卡或术语卡。
+        <p>
+          <button type="button" onClick={() => void onGenerate()} disabled={isGenerating}>
+            {isGenerating ? '正在生成全书规划...' : '生成全书规划'}
+          </button>
+        </p>
       </div>
 
       {!hasPlanning && (

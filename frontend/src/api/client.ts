@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningCardCandidate, StoryPlanningCardCandidateActionResult, StoryPlanningCardCandidateGenerateReport, StoryPlanningCardCandidateType, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningCardCandidate, StoryPlanningCardCandidateActionResult, StoryPlanningCardCandidateGenerateReport, StoryPlanningCardCandidateType, StoryPlanningGeneratePayload, StoryPlanningGenerateResult, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 
@@ -116,6 +116,8 @@ export const api = {
 
   listLocationCards: (projectId: string) => http.get<LocationCard[]>(`/projects/${projectId}/location-cards`),
   getStoryPlanning: (projectId: string) => http.get<StoryPlanning | null>(`/projects/${projectId}/story-planning`),
+  generateStoryPlanning: (projectId: string, payload: StoryPlanningGeneratePayload = {}) =>
+    http.post<StoryPlanningGenerateResult>(`/projects/${projectId}/story-planning/generate`, payload),
 
   generateStoryPlanningCardCandidates: (projectId: string) =>
     http.post<StoryPlanningCardCandidateGenerateReport>(`/projects/${projectId}/story-planning/card-candidates/generate`, {}),

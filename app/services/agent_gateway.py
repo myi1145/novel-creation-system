@@ -86,6 +86,7 @@ class AgentInvocationResult:
 class AgentProvider(Protocol):
     name: str
 
+    def generate_story_planning(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def decompose_scenes(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> Any: ...
     def generate_draft(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> dict[str, Any]: ...
@@ -97,6 +98,39 @@ class AgentProvider(Protocol):
 
 class MockAgentProvider:
     name = "mock"
+
+    def generate_story_planning(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> dict[str, Any]:
+        project_name = str(context.get("project_name") or "未命名项目")
+        premise = str(context.get("premise") or "")
+        genre_name = str(context.get("genre_name") or context.get("genre_id") or "通用题材")
+        tone = str(context.get("tone") or "稳健叙事")
+        target_chapter_count = context.get("target_chapter_count") or "未指定"
+        return {
+            "worldview": (
+                f"【世界规则】以{genre_name}框架构建可长期连载的世界规则，确保因果闭环与能力上限可解释。\n"
+                f"【题材框架】项目《{project_name}》遵循{genre_name}题材主叙事，强调主线持续推进。\n"
+                "【力量/社会/时代背景】采用层级化力量体系与多势力社会结构，时代处于变局上升期。\n"
+                "【创作边界】避免设定失控与临时加规则，重大设定需在主线冲突中逐步揭示。"
+            ),
+            "main_outline": (
+                f"【整体主线】围绕“{premise}”展开长期主线，逐步放大冲突规模。\n"
+                "【主角长期目标】主角从生存/入局目标升级为重构秩序或破局真相。\n"
+                "【核心冲突】主角路径与既有秩序、隐性敌对势力形成长期对抗。\n"
+                "【长程推进】按‘入局-立足-扩张-决战’推进，并保持每卷有阶段胜负。"
+            ),
+            "volume_plan": (
+                f"【阶段一（约前1/3）】建立世界规则与主角起点，完成入局与首轮冲突（目标章节数参考：{target_chapter_count}）。\n"
+                "【阶段二（约中1/3）】扩大势力博弈，揭示更高层阴影与代价。\n"
+                "【阶段三（约后1/3）】核心矛盾集中爆发，完成主线收束与下一阶段钩子。\n"
+                f"【风格倾向】整体语气保持{tone}，优先输出可执行的创作规划而非正文。"
+            ),
+            "core_seed_summary": (
+                "【核心角色种子】主角、导师/引路人、对手各1-2个，明确立场与关系张力。\n"
+                "【核心势力种子】正向秩序势力、灰度中立势力、对抗势力各给出功能定位。\n"
+                "【核心地点种子】起点区域、中盘扩展区域、终局关键区域。\n"
+                "【核心术语种子】力量体系术语、组织规则术语、历史事件术语。"
+            ),
+        }
 
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> list[dict[str, Any]]:
         goal = context["goal"]
@@ -306,6 +340,9 @@ class OpenAICompatibleProvider:
         self.timeout_seconds = timeout_seconds
         self.temperature = temperature
 
+    def generate_story_planning(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> str:
+        return self._chat_json(system_prompt=prompt.system_prompt, user_prompt=prompt.user_prompt)
+
     def generate_blueprints(self, context: dict[str, Any], prompt: PromptTemplateResolution) -> str:
         return self._chat_json(system_prompt=prompt.system_prompt, user_prompt=prompt.user_prompt)
 
@@ -467,6 +504,7 @@ def _ensure_list(text: str) -> list[dict[str, Any]]:
 
 
 STRUCTURED_OUTPUT_SPECS: dict[str, dict[str, Any]] = {
+    "generate_story_planning": {"output_type": "StoryPlanningDraft", "expected_root": "object"},
     "generate_blueprints": {"output_type": "CandidateBlueprintList", "expected_root": "list"},
     "decompose_scenes": {"output_type": "ScenePlanResult", "expected_root": "list"},
     "review_gate": {"output_type": "GateDecisionDraft", "expected_root": "object"},
@@ -627,6 +665,17 @@ def _normalize_scene_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_story_planning_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
+    return {
+        "worldview": str(data.get("worldview") or "").strip(),
+        "main_outline": str(data.get("main_outline") or "").strip(),
+        "volume_plan": str(data.get("volume_plan") or "").strip(),
+        "core_seed_summary": str(data.get("core_seed_summary") or "").strip(),
+        "provider": provider,
+        "model": model,
+    }
+
+
 def _normalize_chapter_summary_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
     return {
         "summary": str(data.get("summary") or "已生成章节摘要。"),
@@ -740,6 +789,17 @@ class AgentGateway:
             report = _build_parse_report(method_name, decision="rejected", route="human_review", envelope_status=envelope_status, issues=issues + [_build_parse_issue("E009", "P0", "L4", f"输出包含越权写入信号: {', '.join(forbidden_keys)}")], repair_actions=repair_actions)
             raise AgentStructuredOutputError("检测到越权写入信号", error_code="parse_e009", severity="P0", decision="rejected", parse_report=report)
 
+        if method_name == "generate_story_planning":
+            normalized = _normalize_story_planning_payload(business_payload, provider=provider_name, model=model_name)
+            missing_fields = [field for field in ("worldview", "main_outline", "volume_plan", "core_seed_summary") if not normalized.get(field)]
+            if missing_fields:
+                issues.append(_build_parse_issue("E003", "P1", "L2", f"全书规划缺少必填字段: {', '.join(missing_fields)}"))
+                report = _build_parse_report(method_name, decision="reask", route="reask", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+                raise AgentStructuredOutputError("全书规划结构化输出缺少必填字段", error_code="parse_e003", severity="P1", decision="reask", parse_report=report)
+            normalized.pop("provider", None)
+            normalized.pop("model", None)
+            return normalized, _build_parse_report(method_name, decision="accepted" if not issues else "degraded", route="continue", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+
         if method_name == "review_gate":
             normalized = _normalize_gate_review_payload(business_payload, provider=provider_name, model=model_name)
             allowed = {"passed", "warning", "failed"}
@@ -810,6 +870,9 @@ class AgentGateway:
             from app.services.agent_call_service import agent_call_service
             snapshot["recent_call_stats"] = agent_call_service.get_stats(db=db).model_dump(mode="json")
         return snapshot
+
+    def generate_story_planning(self, db: Session | None, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
+        return self._invoke(db=db, action_name="generate_story_planning", agent_type="story_planner", method_name="generate_story_planning", context=context, audit_context=audit_context)
 
     def generate_blueprints(self, db: Session | None, context: dict[str, Any], audit_context: dict[str, Any]) -> AgentInvocationResult:
         return self._invoke(db=db, action_name="generate_blueprints", agent_type="planner", method_name="generate_blueprints", context=context, audit_context=audit_context)
