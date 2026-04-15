@@ -713,38 +713,33 @@ def _normalize_story_planning_payload(data: dict[str, Any], *, provider: str, mo
 
 
 def _normalize_story_directory_payload(data: dict[str, Any], *, provider: str, model: str) -> dict[str, Any]:
-    def normalize_str_list(value: Any) -> list[str] | None:
+    def _require_string_list(value: Any, *, field_name: str) -> list[str]:
         if value is None:
             return []
         if not isinstance(value, list):
-            return None
+            raise ValueError(f"{field_name} must be list[str]")
         normalized_items: list[str] = []
         for item in value:
             if not isinstance(item, str):
-                return None
+                raise ValueError(f"{field_name} must be list[str]")
             text = item.strip()
             if text:
                 normalized_items.append(text)
         return normalized_items
 
     chapter_items = []
-    for item in list(data.get("chapter_items") or []):
+    for index, item in enumerate(list(data.get("chapter_items") or []), start=1):
         if not isinstance(item, dict):
-            continue
+            raise ValueError(f"chapter_items[{index}] must be object")
         chapter_no = item.get("chapter_no")
         chapter_title = str(item.get("chapter_title") or "").strip()
-        required_entities = normalize_str_list(item.get("required_entities"))
-        required_seed_points = normalize_str_list(item.get("required_seed_points"))
-        foreshadow_constraints = normalize_str_list(item.get("foreshadow_constraints"))
-        if (
-            not isinstance(chapter_no, int)
-            or chapter_no <= 0
-            or not chapter_title
-            or required_entities is None
-            or required_seed_points is None
-            or foreshadow_constraints is None
-        ):
-            continue
+        if not isinstance(chapter_no, int) or chapter_no <= 0:
+            raise ValueError(f"chapter_items[{index}].chapter_no must be positive integer")
+        if not chapter_title:
+            raise ValueError(f"chapter_items[{index}].chapter_title must be non-empty string")
+        required_entities = _require_string_list(item.get("required_entities"), field_name=f"chapter_items[{index}].required_entities")
+        required_seed_points = _require_string_list(item.get("required_seed_points"), field_name=f"chapter_items[{index}].required_seed_points")
+        foreshadow_constraints = _require_string_list(item.get("foreshadow_constraints"), field_name=f"chapter_items[{index}].foreshadow_constraints")
         chapter_items.append(
             {
                 "chapter_no": chapter_no,
@@ -892,7 +887,12 @@ class AgentGateway:
             return normalized, _build_parse_report(method_name, decision="accepted" if not issues else "degraded", route="continue", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
 
         if method_name == "generate_story_directory":
-            normalized = _normalize_story_directory_payload(business_payload, provider=provider_name, model=model_name)
+            try:
+                normalized = _normalize_story_directory_payload(business_payload, provider=provider_name, model=model_name)
+            except ValueError as exc:
+                issues.append(_build_parse_issue("E003", "P1", "L2", f"章节目录字段校验失败: {exc}"))
+                report = _build_parse_report(method_name, decision="reask", route="reask", envelope_status=envelope_status, issues=issues, repair_actions=repair_actions)
+                raise AgentStructuredOutputError("章节目录结构化输出字段非法", error_code="parse_e003", severity="P1", decision="reask", parse_report=report) from exc
             required_fields = ("directory_title", "directory_summary")
             missing_fields = [field for field in required_fields if not normalized.get(field)]
             if missing_fields:
