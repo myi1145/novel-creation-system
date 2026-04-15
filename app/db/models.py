@@ -591,3 +591,29 @@ class StructuredLocationCardORM(Base):
     is_canon: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class StructuredCardCandidateORM(Base):
+    __tablename__ = "structured_card_candidates"
+    __table_args__ = (
+        CheckConstraint(
+            "card_type in ('character', 'terminology', 'faction', 'location')",
+            name="ck_structured_card_candidates_card_type",
+        ),
+        CheckConstraint("status in ('pending', 'confirmed', 'skipped')", name="ck_structured_card_candidates_status"),
+        Index("ix_structured_card_candidates_project_status", "project_id", "status"),
+        Index("ix_structured_card_candidates_project_card_type", "project_id", "card_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_id)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(50), default="story_planning_directory", nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    card_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    created_card_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)

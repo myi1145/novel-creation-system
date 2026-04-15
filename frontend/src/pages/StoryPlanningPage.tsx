@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
@@ -89,6 +89,7 @@ export function StoryPlanningPage() {
     <div>
       <h2>全书规划</h2>
       <div className="panel">
+        <p><Link to={`/projects/${projectId}/story-planning/card-candidates`}>生成卡槽候选</Link></p>
         用于维护整部小说的世界观、主线大纲和分卷/阶段规划。这里的内容会作为后续章节创作的重要参考，但本轮不会自动写入正式设定，也不会自动生成角色卡或术语卡。
       </div>
 

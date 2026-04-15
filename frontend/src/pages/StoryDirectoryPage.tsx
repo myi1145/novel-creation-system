@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ApiError } from '../api/http';
 import { ActionFailure, ActionSuccess, EmptyState } from '../components/Status';
@@ -144,6 +144,7 @@ export function StoryDirectoryPage() {
     <div>
       <h2>章节目录</h2>
       <div className="panel">
+        <p><Link to={`/projects/${projectId}/story-planning/card-candidates`}>生成卡槽候选</Link></p>
         用于把全书规划落到逐章目录，明确每一章的标题、职责、推进目标和关键设定落点。这里的内容会作为后续卡槽候选和章节规划的重要依据，但本轮不会自动生成候选卡，也不会自动进入正式设定。
       </div>
 

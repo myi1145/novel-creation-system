@@ -148,3 +148,44 @@ export interface LocationCard {
   created_at: string;
   updated_at: string;
 }
+
+
+export type StoryPlanningCardCandidateType = 'character' | 'terminology' | 'faction' | 'location';
+export type StoryPlanningCardCandidateStatus = 'pending' | 'confirmed' | 'skipped';
+
+export interface StoryPlanningCardCandidate {
+  id: string;
+  project_id: string;
+  source_type: string;
+  source_id: string;
+  card_type: StoryPlanningCardCandidateType;
+  name: string;
+  summary: string;
+  payload: Dict;
+  status: StoryPlanningCardCandidateStatus;
+  created_card_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryPlanningCardCandidateGenerateItem {
+  card_type: StoryPlanningCardCandidateType;
+  name: string;
+  status: 'created' | 'skipped';
+  message: string;
+}
+
+export interface StoryPlanningCardCandidateGenerateReport {
+  generated_count: number;
+  skipped_count: number;
+  errors: string[];
+  items: StoryPlanningCardCandidateGenerateItem[];
+}
+
+export interface StoryPlanningCardCandidateActionResult {
+  candidate_id: string;
+  card_type?: StoryPlanningCardCandidateType | null;
+  status: StoryPlanningCardCandidateStatus;
+  created_card_id?: string | null;
+  message: string;
+}

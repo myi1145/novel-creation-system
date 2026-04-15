@@ -23,6 +23,7 @@ from app.schemas.structured_cards import (
 from app.services.project_service import project_service
 from app.services.story_directory_service import story_directory_service
 from app.services.story_planning_service import story_planning_service
+from app.services.story_planning_card_candidate_service import story_planning_card_candidate_service
 from app.services.structured_card_service import structured_card_service
 from app.utils.response import success_response
 
@@ -69,6 +70,48 @@ def get_story_planning(project_id: str, db: Session = Depends(get_db)) -> dict:
 def upsert_story_planning(project_id: str, request: StoryPlanningUpsert, db: Session = Depends(get_db)) -> dict:
     item = story_planning_service.upsert_story_planning(db=db, project_id=project_id, request=request)
     return success_response(data=item.model_dump(mode="json"), message="全书规划已保存")
+
+
+
+@router.post("/{project_id}/story-planning/card-candidates/generate")
+def generate_story_planning_card_candidates(project_id: str, db: Session = Depends(get_db)) -> dict:
+    report = story_planning_card_candidate_service.generate_candidates(db=db, project_id=project_id)
+    return success_response(data=report.model_dump(mode="json"), message="候选卡生成完成")
+
+
+@router.get("/{project_id}/story-planning/card-candidates")
+def list_story_planning_card_candidates(
+    project_id: str,
+    status: str | None = None,
+    card_type: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    items = story_planning_card_candidate_service.list_candidates(
+        db=db,
+        project_id=project_id,
+        status=status,
+        card_type=card_type,
+    )
+    return success_response(data=[item.model_dump(mode="json") for item in items])
+
+
+@router.get("/{project_id}/story-planning/card-candidates/{candidate_id}")
+def get_story_planning_card_candidate(project_id: str, candidate_id: str, db: Session = Depends(get_db)) -> dict:
+    item = story_planning_card_candidate_service.get_candidate(db=db, project_id=project_id, candidate_id=candidate_id)
+    return success_response(data=item.model_dump(mode="json"))
+
+
+@router.post("/{project_id}/story-planning/card-candidates/{candidate_id}/confirm")
+def confirm_story_planning_card_candidate(project_id: str, candidate_id: str, db: Session = Depends(get_db)) -> dict:
+    result = story_planning_card_candidate_service.confirm_candidate(db=db, project_id=project_id, candidate_id=candidate_id)
+    return success_response(data=result.model_dump(mode="json"), message=result.message)
+
+
+@router.post("/{project_id}/story-planning/card-candidates/{candidate_id}/skip")
+def skip_story_planning_card_candidate(project_id: str, candidate_id: str, db: Session = Depends(get_db)) -> dict:
+    result = story_planning_card_candidate_service.skip_candidate(db=db, project_id=project_id, candidate_id=candidate_id)
+    return success_response(data=result.model_dump(mode="json"), message=result.message)
+
 
 @router.get("/{project_id}/structured-cards/export.json")
 def export_structured_cards_json(project_id: str, db: Session = Depends(get_db)) -> Response:
