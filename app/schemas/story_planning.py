@@ -28,3 +28,22 @@ class StoryPlanningResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StoryPlanningGenerateRequest(BaseModel):
+    target_chapter_count: int | None = None
+    tone: str | None = None
+
+
+class StoryPlanningGenerateData(BaseModel):
+    worldview: str
+    main_outline: str
+    volume_plan: str
+    core_seed_summary: str
+
+
+class StoryPlanningGenerateResponse(BaseModel):
+    project_id: str
+    generated: bool
+    data: StoryPlanningGenerateData
+    message: str

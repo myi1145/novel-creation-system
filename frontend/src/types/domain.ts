@@ -45,6 +45,23 @@ export interface StoryPlanningUpsertPayload {
   planning_status: 'draft' | 'confirmed';
 }
 
+export interface StoryPlanningGeneratePayload {
+  target_chapter_count?: number;
+  tone?: string;
+}
+
+export interface StoryPlanningGenerateResult {
+  project_id: string;
+  generated: boolean;
+  data: {
+    worldview: string;
+    main_outline: string;
+    volume_plan: string;
+    core_seed_summary: string;
+  };
+  message: string;
+}
+
 export interface StoryDirectoryChapterItem {
   chapter_no: number;
   chapter_title: string;
