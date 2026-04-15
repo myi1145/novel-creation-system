@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ValidationError
 from app.db.session import get_db
 from app.schemas.project import CreateProjectRequest
-from app.schemas.story_directory import StoryDirectoryUpsert
+from app.schemas.story_directory import StoryDirectoryGenerateRequest, StoryDirectoryUpsert
 from app.schemas.story_planning import StoryPlanningGenerateRequest, StoryPlanningUpsert
 from app.schemas.structured_cards import (
     CharacterCardCreate,
@@ -56,6 +56,16 @@ def get_story_directory(project_id: str, db: Session = Depends(get_db)) -> dict:
 def upsert_story_directory(project_id: str, request: StoryDirectoryUpsert, db: Session = Depends(get_db)) -> dict:
     item = story_directory_service.upsert_story_directory(db=db, project_id=project_id, request=request)
     return success_response(data=item.model_dump(mode="json"), message="章节目录已保存")
+
+
+@router.post("/{project_id}/story-directory/generate")
+def generate_story_directory(
+    project_id: str,
+    request: StoryDirectoryGenerateRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    item = story_directory_service.generate_story_directory(db=db, project_id=project_id, request=request)
+    return success_response(data=item.model_dump(mode="json"), message=item.message)
 
 
 @router.get("/{project_id}/story-planning")

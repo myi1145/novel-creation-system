@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningCardCandidate, StoryPlanningCardCandidateActionResult, StoryPlanningCardCandidateGenerateReport, StoryPlanningCardCandidateType, StoryPlanningGeneratePayload, StoryPlanningGenerateResult, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryGeneratePayload, StoryDirectoryGenerateResult, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningCardCandidate, StoryPlanningCardCandidateActionResult, StoryPlanningCardCandidateGenerateReport, StoryPlanningCardCandidateType, StoryPlanningGeneratePayload, StoryPlanningGenerateResult, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 
@@ -140,6 +140,8 @@ export const api = {
 
   saveStoryPlanning: (projectId: string, payload: StoryPlanningUpsertPayload) => http.put<StoryPlanning>(`/projects/${projectId}/story-planning`, payload),
   getStoryDirectory: (projectId: string) => http.get<StoryDirectory | null>(`/projects/${projectId}/story-directory`),
+  generateStoryDirectory: (projectId: string, payload: StoryDirectoryGeneratePayload = {}) =>
+    http.post<StoryDirectoryGenerateResult>(`/projects/${projectId}/story-directory/generate`, payload),
   saveStoryDirectory: (projectId: string, payload: StoryDirectoryUpsertPayload) => http.put<StoryDirectory>(`/projects/${projectId}/story-directory`, payload),
 
   getLocationCard: (projectId: string, cardId: number) => http.get<LocationCard>(`/projects/${projectId}/location-cards/${cardId}`),
