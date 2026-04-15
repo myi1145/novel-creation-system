@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -202,3 +203,46 @@ class StructuredCardsImportJsonPayload(BaseModel):
 
 class StructuredCardsImportJsonRequest(BaseModel):
     payload: StructuredCardsImportJsonPayload | None = None
+
+
+CardCandidateType = Literal["character", "terminology", "faction", "location"]
+CardCandidateStatus = Literal["pending", "confirmed", "skipped"]
+
+
+class CardCandidateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    source_type: str
+    source_id: str
+    card_type: CardCandidateType
+    name: str
+    summary: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    status: CardCandidateStatus
+    created_card_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CardCandidateGenerateItem(BaseModel):
+    card_type: CardCandidateType
+    name: str
+    status: Literal["created", "skipped"]
+    message: str
+
+
+class CardCandidateGenerateReport(BaseModel):
+    generated_count: int
+    skipped_count: int
+    errors: list[str] = Field(default_factory=list)
+    items: list[CardCandidateGenerateItem] = Field(default_factory=list)
+
+
+class CardCandidateActionResponse(BaseModel):
+    candidate_id: str
+    card_type: CardCandidateType | None = None
+    status: CardCandidateStatus
+    created_card_id: str | None = None
+    message: str

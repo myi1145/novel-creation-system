@@ -4,6 +4,7 @@ const tabs = [
   ['overview', '项目概览'],
   ['story-planning', '全书规划'],
   ['story-directory', '章节目录'],
+  ['story-planning/card-candidates', '卡槽候选'],
   ['workflows', '运行记录'],
   ['genres', '题材装载'],
   ['canon', '正式设定快照'],

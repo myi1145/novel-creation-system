@@ -24,6 +24,7 @@ npm run build
 - `/projects/:projectId/overview`
 - `/projects/:projectId/story-planning`
 - `/projects/:projectId/story-directory`
+- `/projects/:projectId/story-planning/card-candidates`
 - `/projects/:projectId/genres`
 - `/projects/:projectId/canon`
 - `/projects/:projectId/objects`
@@ -61,7 +62,7 @@ npm run build
 - 用途：将“全书规划”下沉为逐章目录，维护章节标题、职责、推进目标、关键实体与设定落点。
 - 关系：位于 `StoryPlanning` 之后，位于卡槽候选与 `ChapterGoal/ChapterBlueprint` 之前。
 - 当前阶段边界：
-  - 不自动生成候选卡。
+  - 候选卡仅在作者手动触发“生成候选卡”后创建。
   - 不写 Canon。
   - 不生成 ChangeSet。
 
@@ -248,8 +249,22 @@ npm run build
   - 分卷 / 阶段规划
   - 核心设定种子摘要
 - 当前阶段边界：
-  - 不会自动生成卡槽候选
+  - 可在页面入口进入“卡槽候选”页面手动生成候选卡。
   - 不会写入 Canon
   - 不会生成 ChangeSet
 - 后续阶段才考虑：卡槽种子生成与章节蓝图输入接入。
 
+
+
+## 卡槽候选（本轮新增）
+
+- 入口：`/projects/:projectId/story-planning/card-candidates`（全书规划页、章节目录页、项目导航均有入口）。
+- 来源：候选卡固定来自 `StoryPlanning + StoryDirectory`。
+- 类型：仅支持 `角色 / 术语 / 势力 / 地点` 四类候选。
+- 交互：支持生成候选、列表筛选、查看详情、确认写入、跳过候选。
+- 关键边界：
+  - 候选卡不会自动进入正式设定，必须由作者确认。
+  - 本轮不写 Canon。
+  - 本轮不生成 ChangeSet。
+  - 本轮不触发 stale。
+  - 本轮不接 ChapterGoal / ChapterBlueprint。

@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
+import type { CanonSnapshot, ChapterBlueprint, ChapterDraft, ChapterGoal, ChapterWorkbenchState, ChangeSet, CharacterCard, CreativeObject, FactionCard, Genre, LocationCard, Project, SceneCard, StoryDirectory, StoryDirectoryUpsertPayload, StoryPlanning, StoryPlanningCardCandidate, StoryPlanningCardCandidateActionResult, StoryPlanningCardCandidateGenerateReport, StoryPlanningCardCandidateType, StoryPlanningUpsertPayload, TerminologyCard } from '../types/domain';
 import type { Dict } from '../types/api';
 
 
@@ -116,6 +116,26 @@ export const api = {
 
   listLocationCards: (projectId: string) => http.get<LocationCard[]>(`/projects/${projectId}/location-cards`),
   getStoryPlanning: (projectId: string) => http.get<StoryPlanning | null>(`/projects/${projectId}/story-planning`),
+
+  generateStoryPlanningCardCandidates: (projectId: string) =>
+    http.post<StoryPlanningCardCandidateGenerateReport>(`/projects/${projectId}/story-planning/card-candidates/generate`, {}),
+  listStoryPlanningCardCandidates: (
+    projectId: string,
+    filters?: { status?: 'pending' | 'confirmed' | 'skipped'; card_type?: StoryPlanningCardCandidateType },
+  ) => {
+    const query = new URLSearchParams();
+    if (filters?.status) query.set('status', filters.status);
+    if (filters?.card_type) query.set('card_type', filters.card_type);
+    const suffix = query.toString();
+    return http.get<StoryPlanningCardCandidate[]>(`/projects/${projectId}/story-planning/card-candidates${suffix ? `?${suffix}` : ''}`);
+  },
+  getStoryPlanningCardCandidate: (projectId: string, candidateId: string) =>
+    http.get<StoryPlanningCardCandidate>(`/projects/${projectId}/story-planning/card-candidates/${candidateId}`),
+  confirmStoryPlanningCardCandidate: (projectId: string, candidateId: string) =>
+    http.post<StoryPlanningCardCandidateActionResult>(`/projects/${projectId}/story-planning/card-candidates/${candidateId}/confirm`, {}),
+  skipStoryPlanningCardCandidate: (projectId: string, candidateId: string) =>
+    http.post<StoryPlanningCardCandidateActionResult>(`/projects/${projectId}/story-planning/card-candidates/${candidateId}/skip`, {}),
+
   saveStoryPlanning: (projectId: string, payload: StoryPlanningUpsertPayload) => http.put<StoryPlanning>(`/projects/${projectId}/story-planning`, payload),
   getStoryDirectory: (projectId: string) => http.get<StoryDirectory | null>(`/projects/${projectId}/story-directory`),
   saveStoryDirectory: (projectId: string, payload: StoryDirectoryUpsertPayload) => http.put<StoryDirectory>(`/projects/${projectId}/story-directory`, payload),
