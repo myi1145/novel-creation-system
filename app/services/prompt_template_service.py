@@ -20,7 +20,7 @@ DEFAULT_PROMPT_TEMPLATES: list[dict[str, Any]] = [
         "scope_type": "global",
         "scope_key": "__global__",
         "system_template": (
-            "你是小说全书规划 Agent。请基于项目基础信息输出创作规划草稿。"
+            "你是小说全书规划 Agent。请基于项目基础信息输出“整书架构规划对象”，而不是粗大纲。"
             "必须严格返回 JSON 对象，不要输出 Markdown，不要输出正文。"
         ),
         "user_template": (
@@ -33,10 +33,11 @@ DEFAULT_PROMPT_TEMPLATES: list[dict[str, Any]] = [
             "target_chapter_count: {target_chapter_count}\n"
             "tone: {tone}\n"
             "要求：\n"
-            "1) worldview 需包含世界规则、题材框架、力量/社会/时代背景、创作边界；\n"
-            "2) main_outline 需包含主角长期目标、核心冲突、长程推进方向；\n"
-            "3) volume_plan 需按阶段/分卷给出推进任务、阶段目标与冲突；\n"
-            "4) core_seed_summary 需给出角色/势力/地点/术语四类种子摘要。"
+            "1) worldview 必须用分段标签输出，且至少包含：[世界背景] [力量体系] [社会秩序] [势力格局] [资源与代价] [隐藏真相方向] [规则边界]；\n"
+            "2) main_outline 必须同时覆盖核心种子 + 角色动力学 + 主线架构，且至少包含：[阅读承诺] [主角长期成长主线] [核心冲突] [关键角色关系张力] [关键配角功能] [主要对抗力量] [感情线/情绪主线] [长期钩子] [主线架构] [关键转折点] [长程悬念问题]；\n"
+            "3) volume_plan 必须按分卷职责输出，且至少包含：[分卷规划原则] [卷一职责] [卷二职责] [卷三职责] [卷末承接]；每卷需写清职责、目标、冲突、关键推进、卷末转折；\n"
+            "4) core_seed_summary 必须聚焦核心种子与开局状态快照，且至少包含：[核心种子] [初始状态快照] [主角初始状态] [关键关系初始状态] [已知开放问题] [埋下的谜团/伏笔] [开局局势张力] [前期不可随意改写的状态边界]；\n"
+            "5) 输出应可直接作为 StoryDirectory 上游输入，禁止空泛套话，禁止章节正文。"
         ),
         "output_contract": {
             "type": "json_object",

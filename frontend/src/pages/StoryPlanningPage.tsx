@@ -113,7 +113,7 @@ export function StoryPlanningPage() {
       <h2>全书规划</h2>
       <div className="panel">
         <p><Link to={`/projects/${projectId}/story-planning/card-candidates`}>生成卡槽候选</Link></p>
-        用于维护整部小说的世界观、主线大纲和分卷/阶段规划。这里的内容会作为后续章节创作的重要参考，但本轮不会自动写入正式设定，也不会自动生成角色卡或术语卡。
+        用于维护整部小说的整书架构规划（核心种子、角色动力学、世界规则、主线架构、分卷职责、初始状态快照）。这里的内容会作为后续章节创作的重要参考，但本轮不会自动写入正式设定，也不会自动生成角色卡或术语卡。
         <p>
           <button type="button" onClick={() => void onGenerate()} disabled={isGenerating}>
             {isGenerating ? '正在生成全书规划...' : '生成全书规划'}
@@ -122,7 +122,7 @@ export function StoryPlanningPage() {
       </div>
 
       {!hasPlanning && (
-        <EmptyState text="还没有全书规划，可以先整理整部小说的世界观、主线大纲和分卷规划。" />
+        <EmptyState text="还没有全书规划，可先生成整书架构草稿，再按阅读承诺/角色动力学/分卷职责逐项细化。" />
       )}
 
       <form className="panel" onSubmit={onSubmit}>
@@ -145,7 +145,7 @@ export function StoryPlanningPage() {
             value={form.worldview}
             onChange={(e) => setForm({ ...form, worldview: e.target.value })}
             rows={8}
-            placeholder="记录世界规则、体系设定、社会结构、题材边界。"
+            placeholder="建议包含：[世界背景][力量体系][社会秩序][势力格局][资源与代价][隐藏真相方向][规则边界]。"
           />
         </label>
 
@@ -155,7 +155,7 @@ export function StoryPlanningPage() {
             value={form.main_outline}
             onChange={(e) => setForm({ ...form, main_outline: e.target.value })}
             rows={8}
-            placeholder="记录主线目标、核心冲突、关键转折。"
+            placeholder="建议包含：[阅读承诺][主角长期成长主线][关键角色关系张力][核心冲突][主线架构][关键转折点][长程悬念问题]。"
           />
         </label>
 
@@ -165,7 +165,7 @@ export function StoryPlanningPage() {
             value={form.volume_plan}
             onChange={(e) => setForm({ ...form, volume_plan: e.target.value })}
             rows={8}
-            placeholder="记录分卷推进与阶段节奏。"
+            placeholder="建议按[卷一职责][卷二职责][卷三职责]描述每卷目标/冲突/关键推进/卷末转折。"
           />
         </label>
 
@@ -175,7 +175,7 @@ export function StoryPlanningPage() {
             value={form.core_seed_summary}
             onChange={(e) => setForm({ ...form, core_seed_summary: e.target.value })}
             rows={8}
-            placeholder="记录核心角色、势力、地点、术语的摘要线索。"
+            placeholder="建议包含：[核心种子][初始状态快照][主角初始状态][关键关系初始状态][已知开放问题][埋下的谜团/伏笔]。"
           />
         </label>
 

@@ -41,7 +41,7 @@ class StoryPlanningGenerateApiTest(unittest.TestCase):
                 .count()
             )
 
-    def test_generate_story_planning_returns_four_core_fields_without_persisting(self):
+    def test_generate_story_planning_returns_structured_architecture_sections_without_persisting(self):
         project_id = self._create_project("ok")
         before_counts = self._count_canon_and_changesets(project_id)
         stale_before = self._count_stale_events(project_id)
@@ -59,6 +59,14 @@ class StoryPlanningGenerateApiTest(unittest.TestCase):
         self.assertTrue(data["data"]["main_outline"].strip())
         self.assertTrue(data["data"]["volume_plan"].strip())
         self.assertTrue(data["data"]["core_seed_summary"].strip())
+        self.assertIn("[世界背景]", data["data"]["worldview"])
+        self.assertIn("[规则边界]", data["data"]["worldview"])
+        self.assertIn("[阅读承诺]", data["data"]["main_outline"])
+        self.assertIn("[关键角色关系张力]", data["data"]["main_outline"])
+        self.assertIn("[卷一职责]", data["data"]["volume_plan"])
+        self.assertIn("[卷末承接]", data["data"]["volume_plan"])
+        self.assertIn("[初始状态快照]", data["data"]["core_seed_summary"])
+        self.assertIn("[前期不可随意改写的状态边界]", data["data"]["core_seed_summary"])
 
         with SessionLocal() as db:
             planning_rows = db.query(StoryPlanningORM).filter(StoryPlanningORM.project_id == project_id).count()
@@ -89,6 +97,26 @@ class StoryPlanningGenerateApiTest(unittest.TestCase):
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
         self.assertEqual(payload["error"]["message"], "生成失败，请稍后重试。")
+
+    def test_generate_story_planning_auto_completes_contract_sections_when_provider_is_sparse(self):
+        project_id = self._create_project("sparse")
+        sparse_payload = {
+            "worldview": "[世界背景] 仅提供一条背景。",
+            "main_outline": "[阅读承诺] 仅提供一个承诺。",
+            "volume_plan": "[分卷规划原则] 仅提供一个规则。",
+            "core_seed_summary": "[核心种子] 仅提供一个种子。",
+        }
+        with patch(
+            "app.services.story_planning_service.StoryPlanningService._invoke_generation_gateway",
+            return_value=sparse_payload,
+        ):
+            resp = self.client.post(f"/api/v1/projects/{project_id}/story-planning/generate", json={})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]["data"]
+        self.assertIn("[规则边界]", data["worldview"])
+        self.assertIn("[关键角色关系张力]", data["main_outline"])
+        self.assertIn("[卷三职责]", data["volume_plan"])
+        self.assertIn("[初始状态快照]", data["core_seed_summary"])
 
 
 if __name__ == "__main__":

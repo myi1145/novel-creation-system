@@ -16,6 +16,34 @@ from app.services.agent_gateway import AgentGatewayError, agent_gateway
 
 
 class StoryPlanningService:
+    _GENERATION_CONTRACT_REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
+        "worldview": ("[世界背景]", "[力量体系]", "[社会秩序]", "[势力格局]", "[资源与代价]", "[隐藏真相方向]", "[规则边界]"),
+        "main_outline": (
+            "[阅读承诺]",
+            "[主角长期成长主线]",
+            "[核心冲突]",
+            "[关键角色关系张力]",
+            "[关键配角功能]",
+            "[主要对抗力量]",
+            "[感情线/情绪主线]",
+            "[长期钩子]",
+            "[主线架构]",
+            "[关键转折点]",
+            "[长程悬念问题]",
+        ),
+        "volume_plan": ("[分卷规划原则]", "[卷一职责]", "[卷二职责]", "[卷三职责]", "[卷末承接]"),
+        "core_seed_summary": (
+            "[核心种子]",
+            "[初始状态快照]",
+            "[主角初始状态]",
+            "[关键关系初始状态]",
+            "[已知开放问题]",
+            "[埋下的谜团/伏笔]",
+            "[开局局势张力]",
+            "[前期不可随意改写的状态边界]",
+        ),
+    }
+
     @staticmethod
     def _ensure_project_exists(db: Session, project_id: str) -> None:
         exists = db.query(ProjectORM.id).filter(ProjectORM.id == project_id).first()
@@ -70,6 +98,7 @@ class StoryPlanningService:
         try:
             raw_payload = self._invoke_generation_gateway(db=db, context=context, project=project)
             generated = self._normalize_generated_payload(raw_payload)
+            generated = self._upgrade_generated_payload_contract(generated=generated, context=context)
         except ValidationError:
             raise
         except AgentGatewayError as exc:
@@ -127,6 +156,98 @@ class StoryPlanningService:
                 raise ValidationError("生成失败，请稍后重试。")
             values[field] = value.strip()
         return StoryPlanningGenerateData(**values)
+
+    def _upgrade_generated_payload_contract(self, *, generated: StoryPlanningGenerateData, context: dict[str, Any]) -> StoryPlanningGenerateData:
+        values = generated.model_dump()
+        values["worldview"] = self._ensure_contract_sections(
+            text=values["worldview"],
+            required_headings=self._GENERATION_CONTRACT_REQUIRED_HEADINGS["worldview"],
+            fallback_map=self._worldview_fallback_sections(context=context),
+        )
+        values["main_outline"] = self._ensure_contract_sections(
+            text=values["main_outline"],
+            required_headings=self._GENERATION_CONTRACT_REQUIRED_HEADINGS["main_outline"],
+            fallback_map=self._main_outline_fallback_sections(context=context),
+        )
+        values["volume_plan"] = self._ensure_contract_sections(
+            text=values["volume_plan"],
+            required_headings=self._GENERATION_CONTRACT_REQUIRED_HEADINGS["volume_plan"],
+            fallback_map=self._volume_plan_fallback_sections(context=context),
+        )
+        values["core_seed_summary"] = self._ensure_contract_sections(
+            text=values["core_seed_summary"],
+            required_headings=self._GENERATION_CONTRACT_REQUIRED_HEADINGS["core_seed_summary"],
+            fallback_map=self._core_seed_fallback_sections(context=context),
+        )
+        return StoryPlanningGenerateData(**values)
+
+    @staticmethod
+    def _ensure_contract_sections(*, text: str, required_headings: tuple[str, ...], fallback_map: dict[str, str]) -> str:
+        normalized = text.strip()
+        for heading in required_headings:
+            if heading in normalized:
+                continue
+            fallback = fallback_map.get(heading, "待作者确认并补充。")
+            normalized += f"\n{heading} {fallback}".rstrip()
+        return normalized.strip()
+
+    @staticmethod
+    def _worldview_fallback_sections(context: dict[str, Any]) -> dict[str, str]:
+        genre_name = str(context.get("genre_name") or "当前题材")
+        premise = str(context.get("premise") or "项目前提").strip()
+        return {
+            "[世界背景]": f"围绕《{genre_name}》题材建立长期可连载背景，主轴承接：{premise or '待补充'}。",
+            "[力量体系]": "定义力量来源、成长路径、上限与反制关系，避免后期战力失衡。",
+            "[社会秩序]": "明确秩序维护者、灰色地带与底层生存逻辑，保证冲突可持续。",
+            "[势力格局]": "至少给出守成势力、扩张势力、隐性势力三方博弈坐标。",
+            "[资源与代价]": "强调任何跃迁都需成本与后果，禁止无代价突破。",
+            "[隐藏真相方向]": "设置贯穿全书的世界真相线，分阶段揭示，不可一次性揭底。",
+            "[规则边界]": "列出不可越线规则与禁区，后续章节默认必须遵守。",
+        }
+
+    @staticmethod
+    def _main_outline_fallback_sections(context: dict[str, Any]) -> dict[str, str]:
+        premise = str(context.get("premise") or "项目前提").strip()
+        tone = str(context.get("tone") or "稳健推进").strip()
+        return {
+            "[阅读承诺]": f"以“{premise or '主线冲突'}”为读者承诺，持续提供阶段性兑现与升级。",
+            "[主角长期成长主线]": "主角从被动求生到主动破局，能力、认知与责任同步升级。",
+            "[核心冲突]": "个人目标与既有秩序发生结构性冲突，并逐卷放大。",
+            "[关键角色关系张力]": "主角与盟友/对手关系在利益与情感上持续拉扯。",
+            "[关键配角功能]": "配角承担镜像、催化、制衡、背叛或救赎等叙事功能。",
+            "[主要对抗力量]": "明确显性敌人与隐性操盘手，并保留中期反转空间。",
+            "[感情线/情绪主线]": "情绪节奏遵循由低到高、由外冲突到内抉择的推进。",
+            "[长期钩子]": "设置可贯穿中后期的核心谜题或未竟约定。",
+            "[主线架构]": "按前期入局→中期扩张→中后期升级→终局收束组织主线。",
+            "[关键转折点]": "每阶段至少设置一次高代价选择，推动角色关系重排。",
+            "[长程悬念问题]": f"保留一个需到终局回答的问题，叙事气质保持{tone or '稳定'}。",
+        }
+
+    @staticmethod
+    def _volume_plan_fallback_sections(context: dict[str, Any]) -> dict[str, str]:
+        target = context.get("target_chapter_count")
+        chapter_hint = f"目标章节数约 {target}" if target else "目标章节数待定"
+        return {
+            "[分卷规划原则]": f"每卷需承担独立职责并形成阶段性胜负，{chapter_hint}。",
+            "[卷一职责]": "完成主角入局、关系网初建、世界规则首轮兑现。",
+            "[卷二职责]": "扩大战场并提高代价，推动主角从局部胜利走向系统性对抗。",
+            "[卷三职责]": "揭示核心真相与终局矛盾，完成主角能力与价值观终极考验。",
+            "[卷末承接]": "每卷结尾必须留下下一卷核心驱动，不允许无后续牵引。",
+        }
+
+    @staticmethod
+    def _core_seed_fallback_sections(context: dict[str, Any]) -> dict[str, str]:
+        premise = str(context.get("premise") or "项目前提").strip()
+        return {
+            "[核心种子]": "给出角色、势力、地点、术语最小锚点，且可被后续目录拆解引用。",
+            "[初始状态快照]": "记录开局时人物、关系、局势、伏笔的起始面板。",
+            "[主角初始状态]": f"主角在开局对“{premise or '核心问题'}”仅具备局部认知与有限手段。",
+            "[关键关系初始状态]": "明确主角与关键角色的信任/敌意/交易基线。",
+            "[已知开放问题]": "列出当前已知但未解的问题，作为前中期推进抓手。",
+            "[埋下的谜团/伏笔]": "给出可回收的谜团编号与预计回收区间。",
+            "[开局局势张力]": "说明外部威胁、内部矛盾与时间压力三者如何同时作用。",
+            "[前期不可随意改写的状态边界]": "冻结关键起点事实，避免前期反复改写导致失真。",
+        }
 
     @staticmethod
     def _build_genre_rule_summary(genre_profile: GenreProfileORM | None) -> str:
